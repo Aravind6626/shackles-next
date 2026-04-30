@@ -5,14 +5,63 @@ import { prisma } from '@/lib/prisma';
 import { getPineconeIndex } from '@/lib/pinecone';
 import { getSession } from '@/lib/session';
 import { getLocalEmbedding } from '@/lib/embeddings';
+import { createRateLimiter, rateLimitPresets, getClientIdentifier } from '@/lib/rate-limit';
+import { NextResponse } from 'next/server';
+
+// Input validation schema
+const chatRequestSchema = z.object({
+  messages: z.array(
+    z.object({
+      role: z.enum(['user', 'assistant']),
+      content: z.string().min(1).max(5000),
+    })
+  ).min(1, "At least one message is required"),
+});
+
+// Rate limiter for chat (50 per day per user)
+const chatLimiter = createRateLimiter({
+  ...rateLimitPresets.chat,
+  keyPrefix: "api:chat",
+});
 
 export async function POST(req: Request) {
   try {
-    const { messages } = await req.json();
+    // Validate request body
+    const body = await req.json().catch(() => ({}));
+    const validationResult = chatRequestSchema.safeParse(body);
+    
+    if (!validationResult.success) {
+      return NextResponse.json(
+        {
+          error: "Invalid request",
+          details: validationResult.error.flatten().fieldErrors,
+        },
+        { status: 400 }
+      );
+    }
+
+    const { messages } = validationResult.data;
     
     const session = await getSession();
-    // if (!session?.userId) return new Response('Unauthorized', { status: 401 });
-    const userId = session?.userId ? String(session.userId) : "testuser";
+    const userId = session?.userId ? String(session.userId) : "anonymous";
+
+    // Apply rate limiting
+    const rateLimitKey = session?.userId ? `user:${session.userId}` : `ip:${getClientIdentifier(req)}`;
+    const rateLimitResult = await chatLimiter.limit(rateLimitKey);
+    
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        { error: "Too many chat messages. Please try again later." },
+        {
+          status: 429,
+          headers: {
+            "x-ratelimit-limit": "50",
+            "x-ratelimit-remaining": String(rateLimitResult.remaining),
+            "retry-after": String(Math.ceil((rateLimitResult.reset - Date.now()) / 1000)),
+          },
+        }
+      );
+    }
 
     const result = streamText({
       model: google('gemini-pro'),
@@ -39,21 +88,26 @@ If you register a user successfully, congratulate them enthusiastically!`,
             interests: z.string().describe('A summary of the user\'s interests or department.'),
           }),
           execute: async ({ interests }: { interests: string }) => {
-            const embeddingVector = await getLocalEmbedding(interests);
+            try {
+              const embeddingVector = await getLocalEmbedding(interests);
 
-            const index = getPineconeIndex();
-            const results = await index.query({
-              vector: embeddingVector,
-              topK: 3,
-              includeMetadata: true,
-            });
+              const index = getPineconeIndex();
+              const results = await index.query({
+                vector: embeddingVector,
+                topK: 3,
+                includeMetadata: true,
+              });
 
-            return results.matches.map((match) => ({
-              id: match.id,
-              name: match.metadata?.name,
-              type: match.metadata?.type,
-              score: match.score,
-            }));
+              return results.matches.map((match) => ({
+                id: match.id,
+                name: match.metadata?.name,
+                type: match.metadata?.type,
+                score: match.score,
+              }));
+            } catch (error) {
+              console.error('[Chat] Recommendation error:', error);
+              return { error: 'Unable to fetch event recommendations at this time' };
+            }
           },
         }),
         registerForEvent: tool({
@@ -105,7 +159,7 @@ If you register a user successfully, congratulate them enthusiastically!`,
 
               return { success: true, message: `Successfully registered for ${event.name}! 🎉 Your spot is confirmed.` };
             } catch (e: any) {
-               console.error("Registration error:", e);
+               console.error("[Chat] Registration error:", e);
                return { success: false, message: 'There was an unexpected error processing your registration.'}
             }
           },
@@ -113,10 +167,13 @@ If you register a user successfully, congratulate them enthusiastically!`,
       },
     });
 
-    return result.toUIMessageStreamResponse();
+    // Return streaming response using toTextStreamResponse() from ai SDK
+    return result.toTextStreamResponse();
   } catch (error: any) {
-    console.error('Chat endpoint error:', error);
-    require('fs').writeFileSync('chat_error_log.txt', String(error?.stack || error));
-    return new Response('Internal Server Error: ' + (error?.message || String(error)), { status: 500 });
+    console.error('[Chat] Endpoint error:', error);
+    return NextResponse.json(
+      { error: 'Internal Server Error', message: error?.message || 'Unknown error' },
+      { status: 500 }
+    );
   }
 }
