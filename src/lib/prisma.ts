@@ -108,4 +108,17 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
+// ---------------------------------------------------------------------------
+// Graceful shutdown — Phase 6B
+// Disconnect the connection pool cleanly when the container receives SIGTERM
+// (Docker stop, App Platform rolling deployment, etc.).
+// Without this, in-flight connections may be dropped abruptly and the pool
+// may emit connection-leak warnings in the next container's startup logs.
+// ---------------------------------------------------------------------------
+if (process.env.NODE_ENV === "production") {
+  process.once("SIGTERM", async () => {
+    await prisma.$disconnect();
+  });
+}
+
 export default prisma;
