@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     const userId = session?.userId ? String(session.userId) : "testuser";
 
     const result = streamText({
-      model: google('gemini-pro'),
+      model: google('gemini-2.0-flash'),
       system: `You are the friendly and helpful Shackles Symposium AI Assistant.
 Your job is to help attendees navigate the symposium, recommend technical and non-technical events, and register them for workshops.
 Always be polite, concise, and enthusiastic. Use the provided tools to answer questions about events.
