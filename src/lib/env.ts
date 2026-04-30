@@ -21,6 +21,10 @@ export function validateServerEnv() {
   const required = ["DATABASE_URL", "SESSION_SECRET", "STORAGE_PROVIDER", "NEXT_PUBLIC_APP_URL"];
   const yearlyRequired = ["ACTIVE_YEAR", "ACTIVE_THEME_KEY", "ACTIVE_PUBLIC_DOMAIN"];
 
+  // DIRECT_DATABASE_URL is required in production for Prisma migrations
+  // and for connection-pool-aware setups (Phase 6A).
+  const productionRequired = ["DIRECT_DATABASE_URL"];
+
   for (const key of required) {
     if (isMissing(process.env[key])) {
       missing.push(key);
@@ -28,7 +32,7 @@ export function validateServerEnv() {
   }
 
   if (process.env.NODE_ENV === "production") {
-    for (const key of yearlyRequired) {
+    for (const key of [...yearlyRequired, ...productionRequired]) {
       if (isMissing(process.env[key])) {
         missing.push(key);
       }
