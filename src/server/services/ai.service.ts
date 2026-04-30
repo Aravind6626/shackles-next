@@ -16,7 +16,7 @@ export interface ProcessChatParams {
 
 export async function processChatStream({ messages, userId }: ProcessChatParams) {
   const result = streamText({
-    model: google('gemini-1.5-flash'),
+    model: google('gemini-2.0-flash'),
     system: `You are the friendly and helpful Shackles Symposium AI Assistant.
 Your job is to help attendees navigate the symposium, recommend technical and non-technical events, and register them for workshops.
 Always be polite, concise, and enthusiastic. Use the provided tools to answer questions about events.
@@ -88,16 +88,16 @@ If you register a user successfully, congratulate them enthusiastically!`,
             });
 
             if (!event) {
-               return { success: false, message: 'Event not found.' };
+              return { success: false, message: 'Event not found.' };
             }
 
             // Check if user exists
             const user = await prisma.user.findUnique({
-                where: { id: userId }
+              where: { id: userId }
             });
-            
+
             if (!user) {
-                return { success: false, message: 'User not found in the system. Cannot register.'};
+              return { success: false, message: 'User not found in the system. Cannot register.' };
             }
 
             // Check if already registered
@@ -119,14 +119,14 @@ If you register a user successfully, congratulate them enthusiastically!`,
               data: {
                 userId: userId,
                 eventId: eventId,
-                source: "ONLINE", 
+                source: "ONLINE",
               },
             });
 
             return { success: true, message: `Successfully registered for ${event.name}! 🎉 Your spot is confirmed.` };
           } catch (e: any) {
-             console.error("[Chat] Registration error:", e);
-             return { success: false, message: 'There was an unexpected error processing your registration.'};
+            console.error("[Chat] Registration error:", e);
+            return { success: false, message: 'There was an unexpected error processing your registration.' };
           }
         },
       }),
