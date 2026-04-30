@@ -23,7 +23,9 @@ function isSerializableRetryableError(error: unknown) {
     return (
       message.includes("could not serialize access") ||
       message.includes("deadlock detected") ||
-      message.includes("serialization")
+      message.includes("serialization") ||
+      message.includes("write conflict") ||
+      message.includes("transaction failed")
     );
   }
 
