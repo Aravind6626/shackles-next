@@ -33,11 +33,27 @@ class PipelineSingleton {
   }
 }
 
+const embeddingCache = new Map<string, { vector: number[]; expiry: number }>();
+const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24 hours for embeddings
+
 export async function getLocalEmbedding(text: string): Promise<number[]> {
   try {
+    const cacheKey = text.toLowerCase().trim();
+    const cached = embeddingCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiry) {
+      return cached.vector;
+    }
+
     const extractor = await PipelineSingleton.getInstance();
     const output = await extractor(text, { pooling: 'mean', normalize: true });
-    return Array.from(output.data);
+    const vector = Array.from(output.data) as number[];
+
+    embeddingCache.set(cacheKey, {
+      vector,
+      expiry: Date.now() + CACHE_TTL_MS,
+    });
+
+    return vector;
   } catch (error) {
     console.error("Embedding Error:", error);
     throw error;

@@ -5,6 +5,10 @@ import { prisma } from '@/lib/prisma';
 import { getPineconeIndex } from '@/lib/pinecone';
 import { getLocalEmbedding } from '@/lib/embeddings';
 
+// In-memory cache for event recommendations to reduce Pinecone and embedding calls
+const recommendationCache = new Map<string, { data: any; expiry: number }>();
+const CACHE_TTL_MS = 1000 * 60 * 60; // 1 hour
+
 export interface ProcessChatParams {
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
   userId: string;
@@ -37,6 +41,12 @@ If you register a user successfully, congratulate them enthusiastically!`,
         }),
         execute: async ({ interests }: { interests: string }) => {
           try {
+            const cacheKey = interests.toLowerCase().trim();
+            const cached = recommendationCache.get(cacheKey);
+            if (cached && Date.now() < cached.expiry) {
+              return cached.data;
+            }
+
             const embeddingVector = await getLocalEmbedding(interests);
 
             const index = getPineconeIndex();
@@ -46,12 +56,20 @@ If you register a user successfully, congratulate them enthusiastically!`,
               includeMetadata: true,
             });
 
-            return results.matches.map((match) => ({
+            const mappedResults = results.matches.map((match) => ({
               id: match.id,
               name: match.metadata?.name,
               type: match.metadata?.type,
               score: match.score,
             }));
+
+            // Save to cache
+            recommendationCache.set(cacheKey, {
+              data: mappedResults,
+              expiry: Date.now() + CACHE_TTL_MS,
+            });
+
+            return mappedResults;
           } catch (error) {
             console.error('[Chat] Recommendation error:', error);
             return { error: 'Unable to fetch event recommendations at this time' };
