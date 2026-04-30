@@ -1,40 +1,37 @@
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
-import { jwtVerify } from 'jose'
-import { getRequiredEnv } from '@/lib/env'
+import { auth } from "@/auth";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
+/**
+ * Middleware for Auth.js v5 - handles authorization
+ * Protected routes require authentication and appropriate roles
+ */
 export async function middleware(request: NextRequest) {
-  const path = request.nextUrl.pathname
+  const session = await auth();
+  const pathname = request.nextUrl.pathname;
 
-  // 1. Define Protected Routes
-  const isAdminRoute = path.startsWith('/admin')
+  // Admin routes: require ADMIN role
+  if (pathname.startsWith("/admin")) {
+    if (!session?.user) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
 
-  // 2. Get the Cookie
-  const cookie = request.cookies.get('session')?.value
-  const secret = new TextEncoder().encode(getRequiredEnv('SESSION_SECRET'))
-
-  // 3. Decrypt & Verify
-  let session = null
-  if (cookie) {
-    try {
-      const { payload } = await jwtVerify(cookie, secret, { algorithms: ['HS256'] })
-      session = payload
-    } catch {
-      // Invalid token
+    const user = session.user as any;
+    if (user.role !== "ADMIN") {
+      return NextResponse.redirect(new URL("/", request.url));
     }
   }
 
-  // 4. Rule: Admin Routes are for ADMINS only
-  if (isAdminRoute) {
-    if (!session || session.role !== 'ADMIN') {
-      return NextResponse.redirect(new URL('/login', request.url))
+  // Protected routes: require login
+  if (pathname.startsWith("/(protected)")) {
+    if (!session?.user) {
+      return NextResponse.redirect(new URL("/login", request.url));
     }
   }
 
-  return NextResponse.next()
+  return NextResponse.next();
 }
 
-// Optimization: Only run on these paths
 export const config = {
-  matcher: ['/admin/:path*']
-}
+  matcher: ["/admin/:path*", "/(protected)/:path*"],
+};
