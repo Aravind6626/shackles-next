@@ -13,8 +13,7 @@ import { QrPayloadError, decodeQrPayload } from "@/server/services/qr.service";
 type DbClient = Prisma.TransactionClient | PrismaClient;
 
 export interface QRScanPayload {
-  qrToken?: string;
-  qrData?: string;
+  qrData: string; // encoded QR payload string — always required
   stationId: string;
   eventId?: string;
   operationType: "ATTENDANCE" | "KIT" | "OTHER";
@@ -31,8 +30,8 @@ export interface QRScanResult {
 }
 
 /**
- * Generate and store QR token for a user when payment is verified
- * Called when admin marks payment as VERIFIED for a year
+ * Generate and store QR token for a user when payment is verified.
+ * Called when admin marks payment as VERIFIED for a year.
  */
 export async function generateQRTokenForUser(
   db: DbClient,
@@ -51,12 +50,11 @@ export async function generateQRTokenForUser(
 
     const token = generateQRToken();
 
-    // Store the token on the user
     await db.user.update({
       where: { id: userId },
       data: {
         qrToken: token,
-        qrTokenExpiry: new Date(year + 1, 0, 1), // Expires at start of next year
+        qrTokenExpiry: new Date(year + 1, 0, 1),
       },
     });
 
@@ -68,8 +66,10 @@ export async function generateQRTokenForUser(
 }
 
 /**
- * Process a QR scan
- * Returns user info and records the scan in RegistrationOperation
+ * Process a QR scan.
+ * Decodes the structured QR payload, validates the user's payment,
+ * then performs the requested operation (ATTENDANCE or KIT).
+ * Records every scan attempt in RegistrationOperation.
  */
 export async function processQRScan(
   db: DbClient,
@@ -78,35 +78,43 @@ export async function processQRScan(
   const activeYear = getActiveYear();
 
   try {
-    const scanValue = payload.qrData?.trim() || payload.qrToken?.trim() || "";
+    const scanValue = payload.qrData.trim();
     if (!scanValue) {
-      return {
-        success: false,
-        error: "QR token not found or invalid",
-      };
+      return { success: false, error: "QR data is empty." };
     }
 
-    let userLookupToken = scanValue;
-
+    // --- Decode structured payload ---
+    let userQrToken: string;
     try {
       const structured = decodeQrPayload(scanValue);
-      if (structured.type === "USER") {
-        userLookupToken = structured.uid;
-      } else {
+
+      if (structured.type !== "USER") {
         return {
           success: false,
-          error: "Invalid QR type for this scanner action",
+          error: "Invalid QR type — expected a personal USER QR code.",
+        };
+      }
+
+      // uid in the USER payload is the qrToken stored on the user row
+      userQrToken = structured.uid;
+
+      // Reject stale QR codes from a previous year
+      if (structured.y !== activeYear) {
+        return {
+          success: false,
+          error: `QR code is from ${structured.y}, not the current year (${activeYear}). Please generate a new QR.`,
         };
       }
     } catch (error) {
-      if (!(error instanceof QrPayloadError)) {
-        throw error;
+      if (error instanceof QrPayloadError) {
+        return { success: false, error: error.message };
       }
+      throw error;
     }
 
-    // Find user by QR token
+    // --- Look up user strictly by qrToken ---
     const user = await db.user.findUnique({
-      where: { qrToken: userLookupToken },
+      where: { qrToken: userQrToken },
       select: {
         id: true,
         firstName: true,
@@ -115,43 +123,13 @@ export async function processQRScan(
         email: true,
         phone: true,
         payment: {
-          select: {
-            status: true,
-            year: true,
-          },
+          select: { status: true, year: true },
         },
       },
     });
 
     if (!user) {
-      if (userLookupToken !== scanValue) {
-        const fallbackUser = await db.user.findUnique({
-          where: { id: userLookupToken },
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            shacklesId: true,
-            email: true,
-            phone: true,
-            payment: {
-              select: {
-                status: true,
-                year: true,
-              },
-            },
-          },
-        });
-
-        if (fallbackUser) {
-          return processStructuredScan(db, payload, fallbackUser, activeYear);
-        }
-      }
-
-      return {
-        success: false,
-        error: "QR token not found or invalid",
-      };
+      return { success: false, error: "QR token not found or invalid." };
     }
 
     return processStructuredScan(db, payload, user, activeYear);
@@ -176,86 +154,120 @@ async function processStructuredScan(
     phone: string;
     payment: { status: string; year: number | null } | null;
   },
-  activeYear: number,
+  activeYear: number
 ): Promise<QRScanResult> {
-  // Verify payment is current
   if (user.payment?.status !== "VERIFIED" || user.payment?.year !== activeYear) {
     return {
       success: false,
       userId: user.id,
       userName: `${user.firstName} ${user.lastName}`,
-      error: "Payment not verified for current year",
+      error: "Payment not verified for current year.",
     };
   }
 
-    const userName = `${user.firstName} ${user.lastName}`;
+  const userName = `${user.firstName} ${user.lastName}`;
 
-    // Handle different operation types
-    if (payload.operationType === "ATTENDANCE" && payload.eventId) {
-      // Mark attendance on event registration
-      const eventRegistration = await db.eventRegistration.findUnique({
-        where: {
-          userId_eventId: {
-            userId: user.id,
-            eventId: payload.eventId,
-          },
-        },
-      });
-
-      if (!eventRegistration) {
-        return {
-          success: false,
+  if (payload.operationType === "ATTENDANCE" && payload.eventId) {
+    const eventRegistration = await db.eventRegistration.findUnique({
+      where: {
+        userId_eventId: {
           userId: user.id,
-          shacklesId: user.shacklesId || undefined,
-          userName,
-          error: "Not registered for this event",
-        };
-      }
-
-      // Update attendance
-      await db.eventRegistration.update({
-        where: { id: eventRegistration.id },
-        data: {
-          attended: true,
-          attendedAt: new Date(),
-          stationId: payload.stationId,
+          eventId: payload.eventId,
         },
-      });
-    } else if (payload.operationType === "KIT") {
-      // Mark kit as issued
-      await db.user.update({
-        where: { id: user.id },
-        data: {
-          kitStatus: "ISSUED",
-          kitIssuedAt: new Date(),
-          kitIssuedBy: payload.stationId,
-        },
-      });
-    }
-
-    // Log the scan operation
-    await db.registrationOperation.create({
-      data: {
-        operationId: `SCAN_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        stationId: payload.stationId,
-        operationType: payload.operationType === "ATTENDANCE" ? "ATTENDANCE" : "KIT",
-        participantId: user.id,
-        status: "APPLIED",
-        processedAt: payload.timestamp || new Date(),
+      },
+      select: {
+        id: true,
+        attended: true,
+        teamId: true,
+        team: { select: { status: true } },
       },
     });
 
-    return {
-      success: true,
-      userId: user.id,
-      shacklesId: user.shacklesId || undefined,
-      userName,
-      message: `${payload.operationType === "KIT" ? "Kit issued" : "Attendance marked"} for ${userName}`,
-    };
+    if (!eventRegistration) {
+      return {
+        success: false,
+        userId: user.id,
+        shacklesId: user.shacklesId || undefined,
+        userName,
+        error: "Not registered for this event.",
+      };
+    }
+
+    // Enforce team-lock before marking attendance
+    if (
+      eventRegistration.teamId &&
+      eventRegistration.team?.status !== "LOCKED"
+    ) {
+      return {
+        success: false,
+        userId: user.id,
+        shacklesId: user.shacklesId || undefined,
+        userName,
+        error: "Team registration must be locked before attendance can be marked.",
+      };
+    }
+
+    if (eventRegistration.attended) {
+      await logScanOperation(db, payload, user.id);
+      return {
+        success: true,
+        userId: user.id,
+        shacklesId: user.shacklesId || undefined,
+        userName,
+        message: `${userName} has already been checked in.`,
+      };
+    }
+
+    await db.eventRegistration.update({
+      where: { id: eventRegistration.id },
+      data: {
+        attended: true,
+        attendedAt: new Date(),
+        stationId: payload.stationId,
+      },
+    });
+  } else if (payload.operationType === "KIT") {
+    await db.user.update({
+      where: { id: user.id },
+      data: {
+        kitStatus: "ISSUED",
+        kitIssuedAt: new Date(),
+        kitIssuedBy: payload.stationId,
+      },
+    });
   }
 
+  await logScanOperation(db, payload, user.id);
+
+  return {
+    success: true,
+    userId: user.id,
+    shacklesId: user.shacklesId || undefined,
+    userName,
+    message: `${payload.operationType === "KIT" ? "Kit issued" : "Attendance marked"} for ${userName}.`,
+  };
+}
+
+/** Persist a scan record to RegistrationOperation. */
+async function logScanOperation(
+  db: DbClient,
+  payload: QRScanPayload,
+  participantId: string
+): Promise<void> {
+  await db.registrationOperation.create({
+    data: {
+      operationId: `SCAN_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      stationId: payload.stationId,
+      operationType: payload.operationType === "ATTENDANCE" ? "ATTENDANCE" : "KIT",
+      participantId,
+      status: "APPLIED",
+      processedAt: payload.timestamp ?? new Date(),
+    },
+  });
+}
+
 /**
- * Get QR scan history for a user
+ * Get QR scan history for a user.
  */
 export async function getQRScanHistory(
   db: DbClient,
@@ -287,7 +299,7 @@ export async function getQRScanHistory(
 }
 
 /**
- * Validate QR token format and existence
+ * Validate QR token format and existence.
  */
 export async function validateQRToken(
   db: DbClient,
@@ -303,12 +315,12 @@ export async function validateQRToken(
     });
 
     if (!user) {
-      return { valid: false, message: "QR token not found" };
+      return { valid: false, message: "QR token not found." };
     }
 
     const activeYear = getActiveYear();
     if (user.payment?.status !== "VERIFIED" || user.payment?.year !== activeYear) {
-      return { valid: false, message: "Payment not current" };
+      return { valid: false, message: "Payment not current." };
     }
 
     return { valid: true, userId: user.id };

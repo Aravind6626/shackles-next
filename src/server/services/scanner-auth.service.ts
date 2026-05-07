@@ -24,78 +24,87 @@ async function getActor(): Promise<ScannerAuthResult> {
   return { ok: true, actor };
 }
 
-async function hasGlobalPermission(role: Role, permission: Permission) {
+async function hasGlobalPermission(role: Role, permission: Permission): Promise<boolean> {
   const entry = await prisma.rolePermission.findUnique({
-    where: {
-      role_permission: {
-        role,
-        permission,
-      },
-    },
+    where: { role_permission: { role, permission } },
   });
-
   return Boolean(entry);
 }
 
+/**
+ * Authorize any staff actor — must have SCAN_QR or MARK_ATTENDANCE permission.
+ * Use requireGlobalPermission or requireEventPermission for tighter checks.
+ */
 export async function authorizeScannerActor(): Promise<ScannerAuthResult> {
   const base = await getActor();
-  if (!base.ok) {
-    return base;
-  }
+  if (!base.ok) return base;
+  if (base.actor.role === Role.ADMIN) return base;
 
-  if (base.actor.role === Role.ADMIN) {
-    return base;
-  }
+  const canScan =
+    (await hasGlobalPermission(base.actor.role, Permission.SCAN_QR)) ||
+    (await hasGlobalPermission(base.actor.role, Permission.MARK_ATTENDANCE));
 
-  const accessible = await prisma.rolePermission.findFirst({
-    where: { role: base.actor.role },
-    select: { role: true },
-  });
-
-  if (!accessible) {
-    return { ok: false, reason: "NOT_AUTHORIZED", message: "You are not allowed to perform this action." };
+  if (!canScan) {
+    return {
+      ok: false,
+      reason: "NOT_AUTHORIZED",
+      message: "You do not have scanner access.",
+    };
   }
 
   return base;
 }
 
-export async function requireGlobalPermission(permission: Permission): Promise<ScannerAuthResult> {
+/**
+ * Require a specific global permission.
+ */
+export async function requireGlobalPermission(
+  permission: Permission
+): Promise<ScannerAuthResult> {
   const base = await getActor();
-  if (!base.ok) {
-    return base;
-  }
-
-  if (base.actor.role === Role.ADMIN) {
-    return base;
-  }
+  if (!base.ok) return base;
+  if (base.actor.role === Role.ADMIN) return base;
 
   const allowed = await hasGlobalPermission(base.actor.role, permission);
   if (!allowed) {
-    return { ok: false, reason: "NOT_AUTHORIZED", message: "You are not allowed to perform this action." };
+    return {
+      ok: false,
+      reason: "NOT_AUTHORIZED",
+      message: "You are not allowed to perform this action.",
+    };
   }
 
   return base;
 }
 
+/**
+ * Require a specific permission AND that the actor is assigned to the given event.
+ * ADMIN bypasses both checks.
+ */
 export async function requireEventPermission(
   eventId: string,
   permission: Permission
 ): Promise<ScannerAuthResult> {
   const base = await getActor();
-  if (!base.ok) {
-    return base;
-  }
+  if (!base.ok) return base;
+  if (base.actor.role === Role.ADMIN) return base;
 
-  if (base.actor.role === Role.ADMIN) {
-    return base;
-  }
-
+  // Step 1: role must have the required permission globally
   const allowed = await hasGlobalPermission(base.actor.role, permission);
   if (!allowed) {
-    return { ok: false, reason: "NOT_AUTHORIZED", message: "Your role does not include this action." };
+    return {
+      ok: false,
+      reason: "NOT_AUTHORIZED",
+      message: "Your role does not include this action.",
+    };
   }
 
-  const staffRole = base.actor.role === Role.COORDINATOR ? StaffRole.COORDINATOR : StaffRole.VOLUNTEER;
+  // Step 2: actor must be assigned to this specific event
+  const staffRole =
+    base.actor.role === Role.COORDINATOR
+      ? StaffRole.COORDINATOR
+      : StaffRole.VOLUNTEER;
+
   const assignment = await prisma.eventStaffAssignment.findFirst({
     where: {
       eventId,
@@ -106,12 +115,17 @@ export async function requireEventPermission(
   });
 
   if (!assignment) {
-    return { ok: false, reason: "NOT_AUTHORIZED", message: "You are not assigned to this event." };
+    return {
+      ok: false,
+      reason: "NOT_AUTHORIZED",
+      message: "You are not assigned to this event.",
+    };
   }
 
   return base;
 }
 
+/** Alias kept for backward-compatibility with existing call-sites. */
 export async function requireScannerActor() {
   return authorizeScannerActor();
 }
