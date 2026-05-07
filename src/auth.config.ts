@@ -29,8 +29,12 @@ export const authConfig: NextAuthConfig = {
     async session({ session, token }) {
       if (session.user) {
         const authToken = token as typeof token & TokenWithAuthFields;
-        session.user.id = authToken.id;
-        session.user.role = authToken.role;
+        if (authToken.id) {
+          session.user.id = authToken.id;
+        }
+        if (authToken.role) {
+          session.user.role = authToken.role;
+        }
       }
       return session;
     },

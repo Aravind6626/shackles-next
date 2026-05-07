@@ -15,8 +15,36 @@ datasource db {
 enum Role {
   APPLICANT // Registered but pending payment check
   PARTICIPANT // Verified (Has QR Code)
+  VOLUNTEER // Event-scoped operational staff
   ADMIN // Super User
   COORDINATOR // Event Manager
+}
+
+enum Permission {
+  SCAN_ATTENDANCE
+  SCAN_KIT
+  ONSPOT_INDIVIDUAL_REG
+  ONSPOT_TEAM_REG
+  MANAGE_TEAMS
+  MANAGE_SCORES
+}
+
+enum StaffRole {
+  COORDINATOR
+  VOLUNTEER
+}
+
+// --- Package model (for symposium passes) ---
+enum PackageType {
+  EVENT_ONLY
+  WORKSHOP_ONLY
+  COMBO
+}
+
+// --- Event categories ---
+enum EventCategory {
+  EVENT
+  WORKSHOP
 }
 
 // --- NEW ENUM ---
@@ -74,9 +102,10 @@ enum EventParticipationMode {
 }
 
 enum TeamStatus {
-  DRAFT
-  COMPLETED
-  LOCKED
+  OPEN       // Team is open for new members to join
+  DRAFT      // Legacy - kept for backward compatibility
+  LOCKED     // Team is locked, no more members can join
+  COMPLETED  // Legacy - kept for backward compatibility
 }
 
 enum TeamMemberRole {
@@ -146,6 +175,7 @@ model User {
 
   // Contact Messages
   contactMessages ContactMessage[]
+  staffAssignments EventStaffAssignment[]
 
   @@index([email])
   @@index([shacklesId])
@@ -177,6 +207,8 @@ model Payment {
   status               PaymentStatus        @default(PENDING)
   paymentChannel       PaymentChannel       @default(ONLINE)
   captureSource        PaymentCaptureSource @default(WEBSITE)
+  packageType          PackageType?         // e.g., EVENT_ONLY, WORKSHOP_ONLY, COMBO
+  year                 Int?                 // Active year for this payment
   verificationDeviceId String?
   verificationNote     String?
 
@@ -192,6 +224,7 @@ model Payment {
 
   @@index([captureSource, status, createdAt])
   @@index([paymentChannel, status, createdAt])
+  @@index([status, year]) // For querying verified payments by year
 }
 
 model OnSpotProfile {
@@ -229,9 +262,10 @@ model Event {
   name              String // 'Paper Presentation', 'Aqua Missile'
   year              Int                    @default(dbgenerated("EXTRACT(YEAR FROM CURRENT_DATE)::INTEGER"))
   type              String? // 'TECHNICAL', 'NON-TECHNICAL', 'SPECIAL', 'WORKSHOP'
+  category          EventCategory?         // EVENT or WORKSHOP
   dayLabel          String?
-  date              DateTime?
-  endDate           DateTime?
+  date              DateTime?              // Start time
+  endDate           DateTime?              // End time
   description       String?
   rulesUrl          String?
   coordinatorName   String?
@@ -240,6 +274,7 @@ model Event {
   contactName       String?
   contactPhone      String?
   participationMode EventParticipationMode @default(INDIVIDUAL)
+  allDay            Boolean                @default(false) // If true, doesn't cause time clash
   isAllDay          Boolean                @default(false)
   teamMinSize       Int?
   teamMaxSize       Int?
@@ -251,6 +286,7 @@ model Event {
   templateSourceId  String?
   templateSource    Event?                 @relation("EventTemplateSource", fields: [templateSourceId], references: [id])
   templateCopies    Event[]                @relation("EventTemplateSource")
+  staffAssignments  EventStaffAssignment[]
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
   registrations     EventRegistration[]
@@ -259,6 +295,27 @@ model Event {
   @@unique([year, name])
   @@index([year, isArchived, isActive])
   @@index([year, isTemplate])
+  @@index([category, year]) // For querying by category
+}
+
+model RolePermission {
+  role       Role
+  permission Permission
+
+  @@id([role, permission])
+}
+
+model EventStaffAssignment {
+  id        String     @id @default(cuid())
+  eventId   String
+  userId    String
+  staffRole StaffRole
+
+  event Event @relation(fields: [eventId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@unique([eventId, userId, staffRole])
+  @@index([eventId, userId])
 }
 
 model Team {
@@ -267,9 +324,10 @@ model Team {
   eventId                    String
   name                       String
   nameNormalized             String
-  teamCode                   String
+  teamCode                   String              // Display code
+  joinCode                   String?             // Short invite code for joining
   memberCount                Int                 @default(0)
-  status                     TeamStatus          @default(DRAFT)
+  status                     TeamStatus          @default(OPEN)
   leader                     User?               @relation("TeamLeader", fields: [leaderUserId], references: [id])
   leaderUserId               String?
   leaderContactPhoneSnapshot String?
@@ -283,6 +341,7 @@ model Team {
 
   @@unique([eventId, nameNormalized])
   @@unique([eventId, teamCode])
+  @@unique([joinCode]) // Ensure join codes are globally unique
 }
 
 model TeamInvite {

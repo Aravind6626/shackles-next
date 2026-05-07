@@ -53,7 +53,7 @@ function formatINR(amount?: number | null) {
   }).format(amount);
 }
 
-export default async function OnSpotRegistrationPage({ searchParams }: { searchParams?: SearchParams }) {
+export default async function OnSpotRegistrationPage({ searchParams }: { searchParams?: SearchParams | Promise<SearchParams> }) {
   const session = await getSession();
   if (!session?.userId) {
     redirect('/login');
@@ -68,11 +68,12 @@ export default async function OnSpotRegistrationPage({ searchParams }: { searchP
     redirect('/login');
   }
 
-  const tab = searchParams?.tab === 'verify' || searchParams?.tab === 'users' ? searchParams.tab : 'register';
-  const selectedStatus = asStatus(searchParams?.status);
-  const selectedChannel = asChannel(searchParams?.channel);
-  const search = (searchParams?.q || '').trim();
-  const stateMessage = searchParams?.state || '';
+  const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
+  const tab = resolvedSearchParams.tab === 'verify' || resolvedSearchParams.tab === 'users' ? resolvedSearchParams.tab : 'register';
+  const selectedStatus = asStatus(resolvedSearchParams.status);
+  const selectedChannel = asChannel(resolvedSearchParams.channel);
+  const search = (resolvedSearchParams.q || '').trim();
+  const stateMessage = resolvedSearchParams.state || '';
 
   const [summaryResult, participantsResult] = await Promise.all([
     getOnSpotSummary(),

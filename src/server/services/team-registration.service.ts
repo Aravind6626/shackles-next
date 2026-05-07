@@ -9,6 +9,12 @@ import {
   TeamStatus,
 } from "@prisma/client";
 import { getEventParticipantCount, isMaxParticipantsExceeded, isMaxTeamsExceeded } from "@/server/services/capacity.service";
+import {
+  getVerifiedPackage,
+  canAccessEventCategory,
+  ensureNoTimeClash,
+  DomainError,
+} from "@/server/services/registration-helpers.service";
 import { getActiveYear } from "@/lib/edition";
 
 export function normalizeTeamName(name: string) {
@@ -99,7 +105,7 @@ export async function addMemberToTeamEvent(input: {
     include: { payment: true },
   });
   if (!user) return { success: false, reason: "USER_NOT_FOUND", error: "User not found." };
-  if (user.payment?.status !== "VERIFIED") {
+  if (!user.payment || user.payment.status !== "VERIFIED" || user.payment.year !== activeYear) {
     return { success: false, reason: "PAYMENT_NOT_VERIFIED", error: "Only verified users can be added to team events." };
   }
 
@@ -111,12 +117,41 @@ export async function addMemberToTeamEvent(input: {
       isArchived: false,
       isTemplate: false,
     },
+    select: {
+      id: true,
+      name: true,
+      participationMode: true,
+      category: true,
+      teamMaxSize: true,
+      maxParticipants: true,
+      maxTeams: true,
+    },
   });
   if (!event) {
     return { success: false, reason: "EVENT_NOT_FOUND", error: "Event not found." };
   }
   if (event.participationMode !== EventParticipationMode.TEAM) {
     return { success: false, reason: "NOT_TEAM_EVENT", error: "This event is not a team event." };
+  }
+
+  // Check package eligibility
+  const pkg = await getVerifiedPackage(input.db, input.userId, activeYear);
+  if (!pkg) {
+    return { success: false, reason: "NO_PACKAGE", error: "No verified package found." };
+  }
+
+  if (!canAccessEventCategory(pkg.packageType, event.category)) {
+    return { success: false, reason: "PACKAGE_NOT_ALLOWED", error: "Your package does not allow registration for this event type." };
+  }
+
+  // Check for time clash
+  try {
+    await ensureNoTimeClash(input.db, input.userId, event.id, activeYear);
+  } catch (err) {
+    if (err instanceof DomainError) {
+      return { success: false, reason: err.code, error: err.message };
+    }
+    throw err;
   }
 
   const existing = await input.db.eventRegistration.findUnique({
@@ -167,7 +202,7 @@ export async function addMemberToTeamEvent(input: {
     });
   }
 
-  if (team.status !== TeamStatus.DRAFT) {
+  if (team.status !== TeamStatus.DRAFT && team.status !== TeamStatus.OPEN) {
     return { success: false, reason: "TEAM_LOCKED", error: "Team is already locked." };
   }
 
@@ -193,6 +228,7 @@ export async function addMemberToTeamEvent(input: {
       source: RegistrationSource.ON_SPOT,
       syncStatus: RegistrationSyncStatus.APPLIED,
       stationId: input.stationId,
+      year: activeYear,
       ...(input.clientOperationId ? { clientOperationId: input.clientOperationId } : {}),
       ...(input.syncedAt ? { syncedAt: input.syncedAt } : {}),
     },
@@ -270,6 +306,19 @@ export async function bulkRegisterTeamByShacklesIds(input: {
       isArchived: false,
       isTemplate: false,
     },
+    select: {
+      id: true,
+      name: true,
+      category: true,
+      participationMode: true,
+      teamMinSize: true,
+      teamMaxSize: true,
+      maxTeams: true,
+      maxParticipants: true,
+      date: true,
+      endDate: true,
+      allDay: true,
+    },
   });
   if (!event) {
     return { success: false, reason: "EVENT_NOT_FOUND", error: "Event not found." };
@@ -310,18 +359,64 @@ export async function bulkRegisterTeamByShacklesIds(input: {
     };
   }
 
+  // Check payment and year for all users
   const unpaidIds = normalizedIds.filter((id) => {
     const user = userByShacklesId.get(id);
-    return !user || user.payment?.status !== "VERIFIED";
+    return !user || user.payment?.status !== "VERIFIED" || user.payment?.year !== activeYear;
   });
 
   if (unpaidIds.length > 0) {
     return {
       success: false,
       reason: "PAYMENT_NOT_VERIFIED",
-      error: `Payment not verified for: ${unpaidIds.join(", ")}`,
+      error: `Payment not verified for current year: ${unpaidIds.join(", ")}`,
       details: { unpaidIds },
     };
+  }
+
+  // Check package eligibility for all users
+  for (const id of normalizedIds) {
+    const user = userByShacklesId.get(id);
+    if (!user || !user.payment) continue;
+    
+    const pkg = await getVerifiedPackage(input.db, user.id, activeYear);
+    if (!pkg) {
+      return {
+        success: false,
+        reason: "NO_PACKAGE",
+        error: `User ${id} has no verified package.`,
+      };
+    }
+
+    if (!canAccessEventCategory(pkg.packageType, event.category)) {
+      return {
+        success: false,
+        reason: "PACKAGE_NOT_ALLOWED",
+        error: `User ${id} package does not allow registration for this event type.`,
+      };
+    }
+  }
+
+  // Check time clash for all users (if not on-spot with markAttended)
+  if (!shouldMarkAttended) {
+    for (const id of normalizedIds) {
+      const user = userByShacklesId.get(id);
+      if (!user) continue;
+
+      try {
+        await ensureNoTimeClash(input.db, user.id, event.id, activeYear);
+      } catch (err) {
+        if (err instanceof DomainError) {
+          return {
+            success: false,
+            reason: err.code,
+            error: `User ${id} has a time conflict: ${err.message}`,
+            details: err.details,
+          };
+        }
+        throw err;
+      }
+    }
   }
 
   const allUserIds = normalizedIds
@@ -399,7 +494,7 @@ export async function bulkRegisterTeamByShacklesIds(input: {
     });
   }
 
-  if (team.status !== TeamStatus.DRAFT) {
+  if (team.status !== TeamStatus.DRAFT && team.status !== TeamStatus.OPEN) {
     return { success: false, reason: "TEAM_LOCKED", error: "Team is already locked." };
   }
 
@@ -431,6 +526,7 @@ export async function bulkRegisterTeamByShacklesIds(input: {
         source: RegistrationSource.ON_SPOT,
         syncStatus: RegistrationSyncStatus.APPLIED,
         stationId: input.stationId,
+        year: activeYear,
         ...(input.operationId ? { clientOperationId: `${input.operationId}:${shacklesId}` } : {}),
         ...(input.syncedAt ? { syncedAt: input.syncedAt } : {}),
       },
@@ -481,7 +577,7 @@ export async function bulkRegisterTeamByShacklesIds(input: {
   // only one concurrent transaction can succeed (prevents multiple winners).
   if (shouldLockTeam) {
     const res = await input.db.team.updateMany({
-      where: { id: team.id, status: TeamStatus.DRAFT },
+      where: { id: team.id, status: { in: [TeamStatus.DRAFT, TeamStatus.OPEN] } },
       data: teamData,
     });
 
@@ -505,7 +601,6 @@ export async function bulkRegisterTeamByShacklesIds(input: {
     message: `Team ${team.name} registered and locked with ${finalMemberCount} members.`,
   };
 }
-
 export async function completeExistingTeamRegistration(input: {
   db: DbClient;
   eventName: string;

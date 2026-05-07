@@ -4,10 +4,11 @@ import { z } from 'zod';
 import { hash } from 'bcryptjs';
 import { revalidatePath } from 'next/cache';
 import type { Prisma } from '@prisma/client';
-import { PaymentCaptureSource, PaymentChannel, PaymentStatus, Role, RegistrationType } from '@prisma/client';
+import { Permission, PaymentCaptureSource, PaymentChannel, PaymentStatus, Role, RegistrationType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
 import { verifyUserPayment } from '@/server/actions/admin';
+import { requireGlobalPermission } from '@/server/services/scanner-auth.service';
 
 const CreateOnSpotParticipantSchema = z.object({
 	firstName: z.string().trim().min(2),
@@ -54,6 +55,15 @@ type OnSpotParticipantRow = Prisma.UserGetPayload<{
 	};
 }>;
 
+async function requireOnSpotActor() {
+	const auth = await requireGlobalPermission(Permission.ONSPOT_INDIVIDUAL_REG);
+	if (!auth.ok) {
+		return { ok: false as const, error: auth.message };
+	}
+
+	return { ok: true as const, actor: auth.actor };
+}
+
 async function requireAdminActor() {
 	const session = await getSession();
 	if (!session?.userId) {
@@ -73,7 +83,7 @@ async function requireAdminActor() {
 }
 
 export async function createOnSpotParticipant(input: unknown) {
-	const actorResult = await requireAdminActor();
+	const actorResult = await requireOnSpotActor();
 	if (!actorResult.ok) return { success: false, error: actorResult.error };
 
 	const parsed = CreateOnSpotParticipantSchema.safeParse(input);

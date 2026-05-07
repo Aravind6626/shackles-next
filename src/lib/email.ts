@@ -2,6 +2,10 @@ import nodemailer from 'nodemailer';
 import { getRequiredEnv } from '@/lib/env';
 import { safeLogError } from '@/lib/safe-log';
 
+// Resend API key (optional, for fallback)
+const resendApiKey = process.env.RESEND_API_KEY;
+
+// SMTP Configuration for Nodemailer fallback
 const smtpHost = getRequiredEnv('SMTP_HOST');
 const smtpPort = Number(getRequiredEnv('SMTP_PORT'));
 const smtpSecure = getRequiredEnv('SMTP_SECURE') === 'true';
@@ -19,6 +23,83 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+/**
+ * Send email via Resend (primary) or Nodemailer (fallback)
+ * Returns success status and which service was used
+ */
+async function sendViaResend(email: string, subject: string, html: string) {
+  if (!resendApiKey) {
+    return { success: false, service: null, error: 'Resend API key not configured' };
+  }
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${resendApiKey}`,
+      },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM_EMAIL || 'noreply@shackles.com',
+        to: email,
+        subject,
+        html,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      return { success: false, service: 'resend', error: JSON.stringify(error) };
+    }
+
+    return { success: true, service: 'resend' };
+  } catch (err) {
+    return { success: false, service: 'resend', error: String(err) };
+  }
+}
+
+/**
+ * Send email via Nodemailer
+ */
+async function sendViaNodemailer(email: string, subject: string, html: string) {
+  try {
+    await transporter.sendMail({
+      from: '"Shackles Symposium" <noreply@shacklessymposium.com>',
+      to: email,
+      subject,
+      html,
+    });
+    return { success: true, service: 'nodemailer' };
+  } catch (error) {
+    return { success: false, service: 'nodemailer', error: String(error) };
+  }
+}
+
+/**
+ * Hybrid send: Try Resend first, fall back to Nodemailer
+ */
+async function sendEmailHybrid(email: string, subject: string, html: string) {
+  // Try Resend first
+  if (resendApiKey) {
+    const result = await sendViaResend(email, subject, html);
+    if (result.success) {
+      console.log(`[EMAIL] Sent via ${result.service} to ${email}`);
+      return { success: true, service: result.service };
+    }
+    console.warn(`[EMAIL] Resend failed: ${result.error}, falling back to Nodemailer`);
+  }
+
+  // Fall back to Nodemailer
+  const result = await sendViaNodemailer(email, subject, html);
+  if (result.success) {
+    console.log(`[EMAIL] Sent via ${result.service} to ${email}`);
+    return { success: true, service: result.service };
+  }
+
+  console.error(`[EMAIL] Both Resend and Nodemailer failed for ${email}`);
+  return { success: false, error: result.error };
+}
+
 export const sendResetEmail = async (email: string, token: string) => {
   const resetLink = `${appUrl}/reset-password?token=${token}`;
 
@@ -30,26 +111,19 @@ export const sendResetEmail = async (email: string, token: string) => {
     console.log('----------------------------------------');
   }
 
+  const html = `
+    <div style="font-family: sans-serif; padding: 20px;">
+      <h2>Password Reset Request</h2>
+      <p>You requested a password reset for your Shackles Symposium account.</p>
+      <p>Click the button below to set a new password:</p>
+      <a href="${resetLink}" style="display: inline-block; padding: 10px 20px; background-color: #000; color: #fff; text-decoration: none; border-radius: 5px;">Reset Password</a>
+      <p style="margin-top: 20px; font-size: 12px; color: #666;">This link expires in 15 minutes.</p>
+    </div>
+  `;
+
   try {
-    /* 
-       NOTE: Real email sending requires valid SMTP credentials. 
-       If they are missing, this might fail in production but development logging (above) will work.
-    */
-    await transporter.sendMail({
-      from: '"Shackles Symposium" <noreply@shacklessymposium.com>',
-      to: email,
-      subject: 'Reset Your Password',
-      html: `
-        <div style="font-family: sans-serif; padding: 20px;">
-          <h2>Password Reset Request</h2>
-          <p>You requested a password reset for your Shackles Symposium account.</p>
-          <p>Click the button below to set a new password:</p>
-          <a href="${resetLink}" style="display: inline-block; padding: 10px 20px; background-color: #000; color: #fff; text-decoration: none; border-radius: 5px;">Reset Password</a>
-          <p style="margin-top: 20px; font-size: 12px; color: #666;">This link expires in 15 minutes.</p>
-        </div>
-      `,
-    });
-    return { success: true };
+    const result = await sendEmailHybrid(email, 'Reset Your Password', html);
+    return result.success ? { success: true } : { success: false, error: result.error };
   } catch (error) {
     safeLogError("Email send error", error, { email });
     return { success: false, error: "Failed to send email" };
@@ -74,26 +148,27 @@ export const sendTeamInviteEmail = async (params: {
     console.log('----------------------------------------');
   }
 
-  try {
-    await transporter.sendMail({
-      from: '"Shackles Symposium" <noreply@shacklessymposium.com>',
-      to: params.toEmail,
-      subject: `Team Invite: ${params.eventName}`,
-      html: `
-        <div style="font-family: sans-serif; padding: 20px;">
-          <h2>You're invited to join a team</h2>
-          <p><strong>${params.leaderName}</strong> invited you to join team <strong>${params.teamName}</strong> for <strong>${params.eventName}</strong>.</p>
-          <p>Team Code: <strong>${params.teamCode}</strong></p>
-          <p>Click below, login, then join using this invite:</p>
-          <a href="${inviteLink}" style="display: inline-block; padding: 10px 20px; background-color: #000; color: #fff; text-decoration: none; border-radius: 5px;">Open Join Link</a>
-          <p style="margin-top: 14px; font-size: 12px; color: #666;">Invite expires at ${params.expiresAt.toUTCString()}.</p>
-        </div>
-      `,
-    });
+  const html = `
+    <div style="font-family: sans-serif; padding: 20px;">
+      <h2>You're invited to join a team</h2>
+      <p><strong>${params.leaderName}</strong> invited you to join team <strong>${params.teamName}</strong> for <strong>${params.eventName}</strong>.</p>
+      <p>Team Code: <strong>${params.teamCode}</strong></p>
+      <p>Click below, login, then join using this invite:</p>
+      <a href="${inviteLink}" style="display: inline-block; padding: 10px 20px; background-color: #000; color: #fff; text-decoration: none; border-radius: 5px;">Open Join Link</a>
+      <p style="margin-top: 14px; font-size: 12px; color: #666;">Invite expires at ${params.expiresAt.toUTCString()}.</p>
+    </div>
+  `;
 
-    return { success: true as const, inviteLink };
+  try {
+    const result = await sendEmailHybrid(params.toEmail, `Team Invite: ${params.eventName}`, html);
+    return { success: result.success, inviteLink, error: result.error };
   } catch (error) {
     safeLogError("Team invite email send error", error, { email: params.toEmail, teamCode: params.teamCode });
-    return { success: false as const, error: "Failed to send invite email", inviteLink };
+    return { success: false, error: "Failed to send invite email", inviteLink };
   }
 };
+
+/**
+ * Export sendEmailHybrid for use in other email functions
+ */
+export { sendEmailHybrid };

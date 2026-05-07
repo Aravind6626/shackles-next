@@ -19,6 +19,20 @@ async function getAdminContext() {
   return { id: user.id, email: user.email };
 }
 
+function pad(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function toDateCell(date?: Date | null) {
+  if (!date) return "";
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function toTimeCell(date?: Date | null) {
+  if (!date) return "";
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export async function GET() {
   const admin = await getAdminContext();
   if (!admin) {
@@ -57,6 +71,9 @@ export async function GET() {
       "type",
       "dayLabel",
       "date",
+      "time",
+      "endDate",
+      "endTime",
       "description",
       "rulesUrl",
       "coordinatorName",
@@ -69,6 +86,7 @@ export async function GET() {
       "teamMaxSize",
       "maxTeams",
       "maxParticipants",
+      "isAllDay",
       "isActive",
     ]),
     ...events.map((event) =>
@@ -77,7 +95,10 @@ export async function GET() {
         event.year,
         event.type,
         event.dayLabel,
-        event.date ? event.date.toISOString().slice(0, 10) : "",
+        toDateCell(event.date),
+        toTimeCell(event.date),
+        toDateCell(event.endDate),
+        toTimeCell(event.endDate),
         event.description,
         event.rulesUrl,
         event.coordinatorName,
@@ -90,6 +111,7 @@ export async function GET() {
         event.teamMaxSize,
         event.maxTeams,
         event.maxParticipants,
+        event.isAllDay,
         event.isActive,
       ])
     ),

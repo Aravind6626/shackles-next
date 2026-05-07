@@ -27,6 +27,20 @@ function toSafeSlug(value: string) {
     .slice(0, 60) || "event";
 }
 
+function pad(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function toDateCell(date?: Date | null) {
+  if (!date) return "";
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function toTimeCell(date?: Date | null) {
+  if (!date) return "";
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export async function GET(request: Request) {
   const admin = await getAdminContext();
   if (!admin) {
@@ -94,6 +108,18 @@ export async function GET(request: Request) {
     stringifyCsvRow([
       "eventName",
       "eventType",
+      "eventYear",
+      "dayLabel",
+      "eventDate",
+      "eventTime",
+      "eventEndDate",
+      "eventEndTime",
+      "isAllDay",
+      "participationMode",
+      "teamMinSize",
+      "teamMaxSize",
+      "maxTeams",
+      "maxParticipants",
       "userEmail",
       "userFirstName",
       "userLastName",
@@ -110,6 +136,18 @@ export async function GET(request: Request) {
       stringifyCsvRow([
         registration.event.name,
         registration.event.type,
+        registration.event.year,
+        registration.event.dayLabel,
+        toDateCell(registration.event.date),
+        toTimeCell(registration.event.date),
+        toDateCell(registration.event.endDate),
+        toTimeCell(registration.event.endDate),
+        registration.event.isAllDay,
+        registration.event.participationMode,
+        registration.event.teamMinSize,
+        registration.event.teamMaxSize,
+        registration.event.maxTeams,
+        registration.event.maxParticipants,
         registration.user.email,
         registration.user.firstName,
         registration.user.lastName,

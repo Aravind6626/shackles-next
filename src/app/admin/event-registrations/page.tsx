@@ -4,18 +4,19 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import LiveSyncRefresher from "@/components/common/LiveSyncRefresher";
-import { MemberDeleteForm, TeamDeleteForm } from "@/components/features/admin/EventRegistrationDeleteForms";
+import EventRegistrationCard from "@/components/features/admin/EventRegistrationCard";
 
-export default async function AdminEventRegistrationsPage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
+export default async function AdminEventRegistrationsPage({ searchParams }: { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await getSession();
   if (!session?.userId) redirect("/login");
   const user = await prisma.user.findUnique({ where: { id: session.userId as string } });
   if (!user || user.role !== "ADMIN") redirect("/login");
 
-  const typeFilter = typeof searchParams?.type === "string" ? searchParams.type : "";
-  const q = typeof searchParams?.q === "string" ? searchParams.q.trim() : "";
-  const success = typeof searchParams?.success === "string" ? searchParams.success : "";
-  const error = typeof searchParams?.error === "string" ? searchParams.error : "";
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const typeFilter = typeof resolvedSearchParams?.type === "string" ? resolvedSearchParams.type : "";
+  const q = typeof resolvedSearchParams?.q === "string" ? resolvedSearchParams.q.trim() : "";
+  const success = typeof resolvedSearchParams?.success === "string" ? resolvedSearchParams.success : "";
+  const error = typeof resolvedSearchParams?.error === "string" ? resolvedSearchParams.error : "";
 
   const events = await prisma.event.findMany({
     orderBy: { name: "asc" },
@@ -182,7 +183,16 @@ export default async function AdminEventRegistrationsPage({ searchParams }: { se
           </div>
           <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-xs space-y-3">
             <h2 className="text-lg font-bold text-gray-900">CSV Import</h2>
-            <p className="text-sm text-gray-600">Upload registrations CSV (eventName + userEmail required) to bulk upsert rows.</p>
+            <p className="text-sm text-gray-600">Upload registrations CSV (eventName + userEmail required). Optional event schedule and limit columns update matched events before rows are upserted.</p>
+            <div className="flex items-center gap-3">
+              <a
+                href="/api/admin/csv/registrations/template"
+                className="inline-flex rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Download CSV Template
+              </a>
+              <span className="text-xs text-gray-500">Get a blank template with headers</span>
+            </div>
             <form action="/api/admin/csv/registrations/import" method="post" encType="multipart/form-data" className="flex flex-col sm:flex-row gap-2 sm:items-center">
               <input
                 type="file"
@@ -201,104 +211,17 @@ export default async function AdminEventRegistrationsPage({ searchParams }: { se
           </div>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            {filtered.length === 0 ? (
-              <div className="p-12 text-center text-gray-500">No registrations found.</div>
-            ) : (
-              <table className="w-full text-left text-sm">
-                <thead className="bg-gray-100 text-gray-600 uppercase text-xs">
-                  <tr>
-                    <th className="px-4 py-3">Event</th>
-                    <th className="px-4 py-3">Type</th>
-                    <th className="px-4 py-3">Registrations</th>
-                    <th className="px-4 py-3">Attendance CSV</th>
-                    <th className="px-4 py-3">Participants</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {filtered.map((evt) => {
-                    const teamMap = new Map<string, { id: string; name: string; memberCount: number }>();
-                    for (const reg of evt.registrations) {
-                      if (!reg.teamId) continue;
-                      const existing = teamMap.get(reg.teamId);
-                      if (existing) {
-                        existing.memberCount += 1;
-                        continue;
-                      }
-
-                      teamMap.set(reg.teamId, {
-                        id: reg.teamId,
-                        name: reg.team?.name || reg.teamName || "Team",
-                        memberCount: 1,
-                      });
-                    }
-
-                    const teamsInEvent = Array.from(teamMap.values());
-
-                    return (
-                      <tr key={evt.id} className="align-top">
-                        <td className="px-4 py-3 font-semibold text-gray-900">{evt.name}</td>
-                        <td className="px-4 py-3 text-gray-700">{evt.type || "--"}</td>
-                        <td className="px-4 py-3 text-gray-900 font-semibold">
-                          {evt.registrations.reduce((sum, reg) => sum + (reg.teamId ? 1 : reg.teamSize || 1), 0)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <a
-                            href={`/api/admin/csv/registrations/export?eventId=${encodeURIComponent(evt.id)}`}
-                            className="inline-flex rounded-sm border border-gray-300 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-                          >
-                            Download CSV
-                          </a>
-                        </td>
-                        <td className="px-4 py-3 text-gray-700">
-                          {evt.registrations.length === 0 ? (
-                            <span className="text-gray-400 text-xs">No participants</span>
-                          ) : (
-                            <div className="space-y-3">
-                              {teamsInEvent.length > 0 ? (
-                                <div className="space-y-1 rounded-sm border border-gray-200 bg-gray-50 p-2">
-                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Teams</p>
-                                  <ul className="space-y-1 text-xs text-gray-800">
-                                    {teamsInEvent.map((team) => (
-                                      <li key={team.id} className="flex items-center justify-between gap-2">
-                                        <span className="font-semibold text-gray-900">{team.name} ({team.memberCount})</span>
-                                        <TeamDeleteForm teamId={team.id} teamName={team.name} />
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              ) : null}
-
-                              <ul className="space-y-1 text-xs text-gray-800">
-                                {evt.registrations.map((reg) => (
-                                  <li key={reg.id} className="flex items-center justify-between gap-2 rounded-sm border border-gray-100 px-2 py-1">
-                                    <div className="min-w-0">
-                                      <p className="font-semibold text-gray-900">{reg.user.firstName} {reg.user.lastName}</p>
-                                      <p className="text-gray-500">
-                                        {reg.teamName ? `${reg.teamName} • ` : ""}
-                                        {reg.memberRole === "LEADER" || reg.team?.leaderUserId === reg.userId ? "Leader" : "Member"}
-                                      </p>
-                                    </div>
-                                    <MemberDeleteForm
-                                      registrationId={reg.id}
-                                      fullName={`${reg.user.firstName} ${reg.user.lastName}`}
-                                      hasTeam={Boolean(reg.teamId)}
-                                    />
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
+        {filtered.length === 0 ? (
+          <div className="bg-white border border-gray-200 rounded-xl p-12 text-center text-gray-500">
+            No registrations found.
           </div>
-        </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {filtered.map((evt) => (
+              <EventRegistrationCard key={evt.id} event={evt} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

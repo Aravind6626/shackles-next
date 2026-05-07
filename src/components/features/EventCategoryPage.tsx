@@ -360,7 +360,10 @@ function EventCategoryContent({ category, title, subtitle, accent }: Omit<Props,
           return (
             <button
               key={event.id}
-              onClick={() => setSelectedEvent(event)}
+              onClick={() => {
+                setSelectedEvent(event);
+                setFeedback("");
+              }}
               className={`flex h-full flex-col gap-3 rounded-2xl border-2 border-gray-200 bg-white p-6 text-left shadow-xs transition-all hover:-translate-y-0.5 ${styles.cardBorder}`}
             >
               <div className="h-4 w-4 rounded-full bg-white/50" />

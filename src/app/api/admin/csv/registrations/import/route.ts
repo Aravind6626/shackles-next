@@ -5,10 +5,12 @@ import { getSession } from "@/lib/session";
 import { csvHeaderMap, parseCsv, readCsvField } from "@/lib/csv";
 import { logAdminAudit } from "@/lib/admin-audit";
 import { getActiveYear } from "@/lib/edition";
-import { createRateLimiter, rateLimitPresets } from "@/lib/rate-limit";
+import { createRateLimiter } from "@/lib/rate-limit";
+import { EventParticipationMode, type Prisma } from "@prisma/client";
 
-const adminRegistrationsImportRateLimiter = createRateLimiter({
-  ...rateLimitPresets.adminImport,
+const registrationsImportRateLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  maxRequests: 50,
   keyPrefix: "api:admin:csv:registrations:import",
 });
 
@@ -34,10 +36,229 @@ function toTeamSize(value: string) {
   return Math.trunc(parsed);
 }
 
+function toPositiveInt(value: string, label: string, errors: string[]) {
+  if (!value) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    errors.push(`${label} must be a positive number.`);
+    return null;
+  }
+  return Math.trunc(parsed);
+}
+
 function toBool(value: string, fallback = false) {
   if (!value) return fallback;
   const normalized = value.toLowerCase();
   return normalized === "true" || normalized === "1" || normalized === "yes";
+}
+
+function hasCsvField(headerMap: Map<string, number>, aliases: string[]) {
+  return aliases.some((alias) => headerMap.has(alias.toLowerCase()));
+}
+
+function readFirstCsvField(row: string[], headerMap: Map<string, number>, aliases: string[]) {
+  for (const alias of aliases) {
+    const value = readCsvField(row, headerMap, alias);
+    if (value) return value;
+  }
+  return "";
+}
+
+function parseParticipationMode(value: string, errors: string[]) {
+  const normalized = value.trim().toUpperCase();
+  if (!normalized) return null;
+  if (normalized === "TEAM") return EventParticipationMode.TEAM;
+  if (normalized === "INDIVIDUAL") return EventParticipationMode.INDIVIDUAL;
+  errors.push("participationMode must be TEAM or INDIVIDUAL.");
+  return null;
+}
+
+function normalizeDateTimeInput(value: string) {
+  return value.includes(" ") && !value.includes("T") ? value.replace(" ", "T") : value;
+}
+
+function datePart(value: string) {
+  return value.split(/[ T]/)[0] || value;
+}
+
+function combineDateAndTime(dateValue: string, timeValue: string) {
+  if (!dateValue) return "";
+  if (!timeValue) return normalizeDateTimeInput(dateValue);
+  return `${datePart(dateValue)}T${timeValue}`;
+}
+
+function parseCsvDate(value: string, label: string, errors: string[]) {
+  const parsed = new Date(normalizeDateTimeInput(value));
+  if (Number.isNaN(parsed.getTime())) {
+    errors.push(`${label} is not a valid date/time.`);
+    return null;
+  }
+  return parsed;
+}
+
+function readNumberUpdate(
+  row: string[],
+  headerMap: Map<string, number>,
+  aliases: string[],
+  label: string,
+  errors: string[]
+) {
+  if (!hasCsvField(headerMap, aliases)) return { provided: false, value: null };
+  return {
+    provided: true,
+    value: toPositiveInt(readFirstCsvField(row, headerMap, aliases), label, errors),
+  };
+}
+
+function buildEventDetailsUpdate(
+  row: string[],
+  headerMap: Map<string, number>,
+  currentMode: EventParticipationMode
+) {
+  const errors: string[] = [];
+  const data: Prisma.EventUpdateInput = {};
+
+  if (hasCsvField(headerMap, ["eventType", "type"])) {
+    data.type = readFirstCsvField(row, headerMap, ["eventType", "type"]).toUpperCase() || null;
+  }
+
+  if (hasCsvField(headerMap, ["dayLabel", "eventDay", "day"])) {
+    data.dayLabel = readFirstCsvField(row, headerMap, ["dayLabel", "eventDay", "day"]).toUpperCase() || null;
+  }
+
+  if (hasCsvField(headerMap, ["participationMode", "mode"])) {
+    const participationMode = parseParticipationMode(
+      readFirstCsvField(row, headerMap, ["participationMode", "mode"]),
+      errors
+    );
+    if (participationMode) data.participationMode = participationMode;
+  }
+
+  const startDateKeys = ["eventDate", "date", "startDate", "eventStartDate", "eventDateTime", "startDateTime"];
+  const startTimeKeys = ["eventTime", "time", "startTime", "eventStartTime"];
+  const endDateKeys = ["eventEndDate", "endDate", "eventEndDateTime", "endDateTime"];
+  const endTimeKeys = ["eventEndTime", "endTime"];
+
+  const hasStartDate = hasCsvField(headerMap, startDateKeys);
+  const hasStartTime = hasCsvField(headerMap, startTimeKeys);
+  const hasEndDate = hasCsvField(headerMap, endDateKeys);
+  const hasEndTime = hasCsvField(headerMap, endTimeKeys);
+
+  const startDateRaw = readFirstCsvField(row, headerMap, startDateKeys);
+  const startTimeRaw = readFirstCsvField(row, headerMap, startTimeKeys);
+  const endDateRaw = readFirstCsvField(row, headerMap, endDateKeys);
+  const endTimeRaw = readFirstCsvField(row, headerMap, endTimeKeys);
+
+  let parsedStart: Date | null = null;
+  if (hasStartDate || hasStartTime) {
+    if (!startDateRaw && startTimeRaw) {
+      errors.push("eventDate is required when eventTime is provided.");
+    }
+
+    data.date = startDateRaw
+      ? parseCsvDate(combineDateAndTime(startDateRaw, startTimeRaw), "eventDate/eventTime", errors)
+      : null;
+    parsedStart = data.date instanceof Date ? data.date : null;
+  }
+
+  if (hasEndDate || hasEndTime) {
+    const effectiveEndDate = endDateRaw || (endTimeRaw && startDateRaw ? datePart(startDateRaw) : "");
+    if (!effectiveEndDate && endTimeRaw) {
+      errors.push("eventEndDate or eventDate is required when eventEndTime is provided.");
+    }
+
+    data.endDate = effectiveEndDate
+      ? parseCsvDate(combineDateAndTime(effectiveEndDate, endTimeRaw), "eventEndDate/eventEndTime", errors)
+      : null;
+  }
+
+  if (parsedStart && data.endDate instanceof Date && data.endDate < parsedStart) {
+    errors.push("eventEndDate/eventEndTime cannot be before eventDate/eventTime.");
+  }
+
+  if (hasCsvField(headerMap, ["isAllDay", "allDay"])) {
+    data.isAllDay = toBool(readFirstCsvField(row, headerMap, ["isAllDay", "allDay"]), false);
+  }
+
+  const maxParticipants = readNumberUpdate(
+    row,
+    headerMap,
+    ["maxParticipants", "maxParticipant", "participantLimit", "maxEventParticipants"],
+    "maxParticipants",
+    errors
+  );
+  if (maxParticipants.provided) data.maxParticipants = maxParticipants.value;
+
+  const maxTeams = readNumberUpdate(
+    row,
+    headerMap,
+    ["maxTeams", "maxTeam", "teamLimit", "maximumTeams"],
+    "maxTeams",
+    errors
+  );
+  if (maxTeams.provided) data.maxTeams = maxTeams.value;
+
+  const teamMinSize = readNumberUpdate(
+    row,
+    headerMap,
+    ["teamMinSize", "minTeamSize", "minParticipants", "minTeamParticipants", "minTeams"],
+    "teamMinSize",
+    errors
+  );
+  const teamMaxSize = readNumberUpdate(
+    row,
+    headerMap,
+    ["teamMaxSize", "maxTeamSize", "maxTeamParticipants", "maxParticipantsPerTeam"],
+    "teamMaxSize",
+    errors
+  );
+
+  const nextMode = data.participationMode === EventParticipationMode.TEAM
+    ? EventParticipationMode.TEAM
+    : data.participationMode === EventParticipationMode.INDIVIDUAL
+      ? EventParticipationMode.INDIVIDUAL
+      : currentMode;
+
+  if (teamMinSize.provided) data.teamMinSize = nextMode === EventParticipationMode.TEAM ? teamMinSize.value : null;
+  if (teamMaxSize.provided) data.teamMaxSize = nextMode === EventParticipationMode.TEAM ? teamMaxSize.value : null;
+
+  const finalTeamMinSize = teamMinSize.provided ? teamMinSize.value : null;
+  const finalTeamMaxSize = teamMaxSize.provided ? teamMaxSize.value : null;
+  if (finalTeamMinSize != null && finalTeamMaxSize != null && finalTeamMinSize > finalTeamMaxSize) {
+    errors.push("teamMinSize cannot be greater than teamMaxSize.");
+  }
+
+  return { data, errors };
+}
+
+function normalizeEventSlot(date: Date, endDate?: Date | null) {
+  const start = date;
+  let end = endDate ?? date;
+
+  if (end < start) {
+    end = start;
+  }
+
+  if (end.getTime() === start.getTime()) {
+    end = new Date(end.getTime() + 1);
+  }
+
+  return { start, end };
+}
+
+function hasScheduleOverlap(
+  a: { start: Date; end: Date },
+  b: { start: Date; end: Date }
+) {
+  return a.start < b.end && b.start < a.end;
+}
+
+function rawDateUpdate(value: Prisma.EventUpdateInput["date"] | undefined) {
+  return value instanceof Date || value === null ? value : undefined;
+}
+
+function rawBoolUpdate(value: Prisma.EventUpdateInput["isAllDay"] | undefined) {
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function parseTeamStatus(value: string): "DRAFT" | "COMPLETED" | "LOCKED" | null {
@@ -58,21 +279,9 @@ export async function POST(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const rateLimitResult = await adminRegistrationsImportRateLimiter.limit(`admin:csv:registrations:import:${admin.id}`);
+  const rateLimitResult = await registrationsImportRateLimiter.limit(`admin:csv:registrations:import:${admin.id}`);
   if (!rateLimitResult.success) {
-    const retryAfterSeconds = Math.max(1, Math.ceil((rateLimitResult.reset - Date.now()) / 1000));
-    return Response.json(
-      { error: "Too many import attempts. Please try again later." },
-      {
-        status: 429,
-        headers: {
-          "x-ratelimit-limit": String(rateLimitPresets.adminImport.maxRequests),
-          "x-ratelimit-remaining": String(rateLimitResult.remaining),
-          "x-ratelimit-reset": String(rateLimitResult.reset),
-          "retry-after": String(retryAfterSeconds),
-        },
-      }
-    );
+    return Response.json({ error: "Rate limit exceeded. Please try again later." }, { status: 429 });
   }
 
   const formData = await request.formData();
@@ -96,7 +305,7 @@ export async function POST(request: Request) {
       isArchived: false,
       isTemplate: false,
     },
-    select: { id: true, name: true },
+    select: { id: true, name: true, date: true, endDate: true, isAllDay: true, participationMode: true },
   });
   const users = await prisma.user.findMany({ select: { id: true, email: true, phone: true } });
 
@@ -106,8 +315,12 @@ export async function POST(request: Request) {
   const headerMap = csvHeaderMap(rows[0]);
   let imported = 0;
   let skipped = 0;
+  const updatedEventIds = new Set<string>();
+  const errors: string[] = [];
+  const plannedSlotsByUser = new Map<string, Array<{ eventId: string; eventName: string; start: Date; end: Date }>>();
 
-  for (const row of rows.slice(1)) {
+  for (const [rowIndex, row] of rows.slice(1).entries()) {
+    const rowNumber = rowIndex + 2;
     const eventName = readCsvField(row, headerMap, "eventName");
     const userEmail = readCsvField(row, headerMap, "userEmail").toLowerCase();
 
@@ -129,14 +342,95 @@ export async function POST(request: Request) {
     const rawTeamName = readCsvField(row, headerMap, "teamName").trim();
     const rawTeamStatus = parseTeamStatus(readCsvField(row, headerMap, "teamStatus"));
     const rawMemberRole = parseMemberRole(readCsvField(row, headerMap, "memberRole"));
+    const event = events.find((item) => item.id === eventId);
+
+    if (!event) {
+      skipped += 1;
+      continue;
+    }
+
+    const eventUpdate = buildEventDetailsUpdate(row, headerMap, event.participationMode);
+    if (eventUpdate.errors.length > 0) {
+      skipped += 1;
+      errors.push(...eventUpdate.errors.map((error) => `Row ${rowNumber}: ${error}`));
+      continue;
+    }
+
+    const hasEventDetails = Object.keys(eventUpdate.data).length > 0;
+    if (hasEventDetails) updatedEventIds.add(eventId);
+
+    const effectiveDate = "date" in eventUpdate.data
+      ? rawDateUpdate(eventUpdate.data.date)
+      : event.date;
+    const effectiveEndDate = "endDate" in eventUpdate.data
+      ? rawDateUpdate(eventUpdate.data.endDate)
+      : event.endDate;
+    const effectiveIsAllDay = "isAllDay" in eventUpdate.data
+      ? rawBoolUpdate(eventUpdate.data.isAllDay) ?? event.isAllDay
+      : event.isAllDay;
 
     if (!dryRun) {
-      const event = events.find((item) => item.id === eventId);
-      if (!event) {
+      if (hasEventDetails) {
+        await prisma.event.update({
+          where: { id: eventId },
+          data: eventUpdate.data,
+        });
+      }
+    }
+
+    let importedSlot: { start: Date; end: Date } | null = null;
+    if (effectiveDate && !effectiveIsAllDay) {
+      const currentSlot = normalizeEventSlot(effectiveDate, effectiveEndDate);
+      importedSlot = currentSlot;
+
+      const plannedConflict = plannedSlotsByUser.get(userId)?.find((slot) => (
+        slot.eventId !== eventId && hasScheduleOverlap(currentSlot, slot)
+      ));
+
+      if (plannedConflict) {
         skipped += 1;
+        errors.push(`Row ${rowNumber}: ${userEmail} is already queued for ${plannedConflict.eventName} in this time slot.`);
         continue;
       }
 
+      const sameUserRegistrations = await prisma.eventRegistration.findMany({
+        where: {
+          userId,
+          eventId: { not: eventId },
+          event: {
+            year: activeYear,
+            isArchived: false,
+            isTemplate: false,
+            isAllDay: false,
+            date: { not: null },
+          },
+        },
+        select: {
+          event: {
+            select: {
+              id: true,
+              name: true,
+              date: true,
+              endDate: true,
+            },
+          },
+        },
+      });
+
+      const conflictingRegistration = sameUserRegistrations.find((registration) => {
+        if (!registration.event.date) return false;
+        const otherSlot = normalizeEventSlot(registration.event.date, registration.event.endDate);
+        return hasScheduleOverlap(currentSlot, otherSlot);
+      });
+
+      if (conflictingRegistration) {
+        skipped += 1;
+        errors.push(`Row ${rowNumber}: ${userEmail} is already registered for ${conflictingRegistration.event.name} in this time slot.`);
+        continue;
+      }
+    }
+
+    if (!dryRun) {
       let teamId: string | null = null;
       if (event && eventId && rawTeamName && eventByName.get(normalizeName(event.name)) === eventId) {
         const teamStatus = rawTeamStatus || "DRAFT";
@@ -200,6 +494,12 @@ export async function POST(request: Request) {
       });
     }
 
+    if (importedSlot) {
+      const plannedSlots = plannedSlotsByUser.get(userId) || [];
+      plannedSlots.push({ eventId, eventName: event.name, ...importedSlot });
+      plannedSlotsByUser.set(userId, plannedSlots);
+    }
+
     imported += 1;
   }
 
@@ -226,6 +526,9 @@ export async function POST(request: Request) {
     revalidatePath("/admin/adminDashboard");
     revalidatePath("/userDashboard");
     revalidatePath("/events");
+    revalidatePath("/events/technical");
+    revalidatePath("/events/non-technical");
+    revalidatePath("/events/special");
     revalidatePath("/workshops");
   }
 
@@ -234,8 +537,8 @@ export async function POST(request: Request) {
     actorId: admin.id,
     actorEmail: admin.email,
     status: "SUCCESS",
-    details: { dryRun, imported, skipped },
+    details: { dryRun, imported, skipped, updatedEvents: updatedEventIds.size, errors: errors.slice(0, 20) },
   });
 
-  return Response.json({ imported, skipped, dryRun });
+  return Response.json({ imported, skipped, updatedEvents: updatedEventIds.size, dryRun, errors });
 }

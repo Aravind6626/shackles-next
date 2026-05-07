@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
 import {
+  Permission,
   RegistrationOperationType,
   RegistrationSyncStatus,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getActiveYear } from "@/lib/edition";
 import { createError } from "@/lib/error-contract";
 import { createRateLimiter, rateLimitPresets } from "@/lib/rate-limit";
 import { resolveRequestId, safeLogError, safeLogInfo } from "@/lib/safe-log";
-import { requireScannerActor } from "@/server/services/scanner-auth.service";
+import {
+  requireEventPermission,
+  requireGlobalPermission,
+  requireScannerActor,
+} from "@/server/services/scanner-auth.service";
 import { applyAttendanceMark } from "@/server/services/attendance.service";
 import { quickRegisterAndMarkAttendance } from "@/server/services/event-registration.service";
 import { runSerializableTransaction } from "@/server/services/transaction.service";
@@ -43,6 +49,59 @@ async function getScannerActor() {
   const auth = await requireScannerActor();
   if (!auth.ok) return null;
   return auth.actor;
+}
+
+async function resolveEventId(eventName?: string) {
+  if (!eventName?.trim()) {
+    return null;
+  }
+
+  const activeYear = getActiveYear();
+  const event = await prisma.event.findFirst({
+    where: {
+      name: { equals: eventName.trim(), mode: "insensitive" },
+      year: activeYear,
+      isArchived: false,
+      isTemplate: false,
+    },
+    select: { id: true },
+  });
+
+  return event?.id || null;
+}
+
+async function authorizeSyncOperation(op: SyncOperationInput) {
+  switch (op.type) {
+    case "KIT":
+      return requireGlobalPermission(Permission.SCAN_KIT);
+    case "ATTENDANCE": {
+      const eventId = await resolveEventId(op.eventName);
+      if (!eventId) {
+        return { ok: false as const, reason: "NOT_AUTHORIZED" as const, message: "Event not found." };
+      }
+
+      return requireEventPermission(eventId, Permission.SCAN_ATTENDANCE);
+    }
+    case "QUICK_REGISTER": {
+      const eventId = await resolveEventId(op.eventName);
+      if (!eventId) {
+        return { ok: false as const, reason: "NOT_AUTHORIZED" as const, message: "Event not found." };
+      }
+
+      return requireEventPermission(eventId, Permission.ONSPOT_INDIVIDUAL_REG);
+    }
+    case "TEAM_ADD":
+    case "TEAM_COMPLETE": {
+      const eventId = await resolveEventId(op.eventName);
+      if (!eventId) {
+        return { ok: false as const, reason: "NOT_AUTHORIZED" as const, message: "Event not found." };
+      }
+
+      return requireEventPermission(eventId, Permission.ONSPOT_TEAM_REG);
+    }
+    default:
+      return { ok: false as const, reason: "NOT_AUTHORIZED" as const, message: "Operation type is not supported." };
+  }
 }
 
 const offlineSyncRateLimiter = createRateLimiter({
@@ -331,6 +390,28 @@ export async function POST(request: Request) {
       scannerUserId: actor.id,
       participantId: operation.participantId || null,
     });
+
+    const access = await authorizeSyncOperation(operation);
+    if (!access.ok) {
+      results.push({
+        operationId: operation.operationId,
+        status: "FAILED",
+        code: "NOT_AUTHORIZED",
+        reason: access.reason,
+        message: access.message,
+      });
+
+      safeLogInfo("[offline.sync]", "Completed operation", {
+        requestId,
+        operationType: operation.type,
+        operationId: operation.operationId,
+        scannerUserId: actor.id,
+        status: "FAILED",
+        durationMs: Date.now() - operationStartedAt,
+        authorized: false,
+      });
+      continue;
+    }
 
     const existing = await prisma.registrationOperation.findUnique({
       where: { operationId: operation.operationId },

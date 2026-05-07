@@ -11,16 +11,17 @@ import { promises as fs } from "fs";
 import path from "path";
 import { allocateShacklesId } from "@/server/services/shackles-id.service";
 import { runSerializableTransaction } from "@/server/services/transaction.service";
+import { encodeQrPayload } from "@/server/services/qr.service";
 
 type QrUploadResult = {
   qrImageUrl: string | null;
   qrPath?: string;
 };
 
-async function generateQrImageBuffer(qrToken: string) {
+async function generateQrImageBuffer(qrValue: string) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
-  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrToken)}`;
+  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrValue)}`;
   let response: Response;
   try {
     response = await fetch(qrApiUrl, {
@@ -81,8 +82,8 @@ async function uploadQrToStorage(
   }
 }
 
-async function uploadQrImage(qrToken: string, shacklesId: string, registrationType: string): Promise<QrUploadResult> {
-  const qrImageBuffer = await generateQrImageBuffer(qrToken);
+async function uploadQrImage(qrValue: string, shacklesId: string, registrationType: string): Promise<QrUploadResult> {
+  const qrImageBuffer = await generateQrImageBuffer(qrValue);
   const uploadResult = await uploadQrToStorage(qrImageBuffer, shacklesId, registrationType, getActiveYear());
 
   return {
@@ -162,6 +163,7 @@ export async function verifyUserPayment(userId: string, action: 'APPROVE' | 'REJ
             });
 
             return {
+              userId,
               shacklesId,
               qrToken,
               registrationType: user.registrationType,
@@ -172,8 +174,16 @@ export async function verifyUserPayment(userId: string, action: 'APPROVE' | 'REJ
 
           if (qrUploadContext) {
             try {
+              const qrValue = encodeQrPayload({
+                v: 1,
+                type: 'USER',
+                uid: userId,
+                sid: qrUploadContext.shacklesId,
+                y: activeYear,
+              });
+
               const qrUpload = await uploadQrImage(
-                qrUploadContext.qrToken,
+                qrValue,
                 qrUploadContext.shacklesId,
                 qrUploadContext.registrationType
               );

@@ -399,20 +399,22 @@ async function createEventAction(formData: FormData) {
   redirect(`/admin/events?year=${encodeURIComponent(String(year))}&formReset=${Date.now()}`);
 }
 
-export default async function AdminEventsPage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
+export default async function AdminEventsPage({ searchParams }: { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await getSession();
   if (!session?.userId) redirect("/login");
 
   const currentUser = await prisma.user.findUnique({ where: { id: session.userId as string } });
   if (!currentUser || currentUser.role !== "ADMIN") redirect("/login");
 
-  const q = typeof searchParams?.q === "string" ? searchParams.q.trim() : "";
-  const editId = typeof searchParams?.edit === "string" ? searchParams.edit.trim() : "";
-  const formReset = typeof searchParams?.formReset === "string" ? searchParams.formReset : "base";
+  const resolvedSearchParams = (await searchParams) ?? {};
+
+  const q = typeof resolvedSearchParams.q === "string" ? resolvedSearchParams.q.trim() : "";
+  const editId = typeof resolvedSearchParams.edit === "string" ? resolvedSearchParams.edit.trim() : "";
+  const formReset = typeof resolvedSearchParams.formReset === "string" ? resolvedSearchParams.formReset : "base";
   const activeYear = getActiveYear();
-  const yearParam = typeof searchParams?.year === "string" ? Number(searchParams.year) : activeYear;
+  const yearParam = typeof resolvedSearchParams.year === "string" ? Number(resolvedSearchParams.year) : activeYear;
   const selectedYear = Number.isInteger(yearParam) && yearParam >= 2000 && yearParam <= 3000 ? yearParam : activeYear;
-  const showArchived = typeof searchParams?.showArchived === "string" && searchParams.showArchived === "true";
+  const showArchived = typeof resolvedSearchParams.showArchived === "string" && resolvedSearchParams.showArchived === "true";
 
   const where: Prisma.EventWhereInput = { year: selectedYear };
   if (q) where.name = { contains: q, mode: "insensitive" };
@@ -477,7 +479,16 @@ export default async function AdminEventsPage({ searchParams }: { searchParams?:
           </div>
           <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-xs space-y-3">
             <h2 className="text-lg font-bold text-gray-900">CSV Import</h2>
-            <p className="text-sm text-gray-600">Upload events CSV (same headers as export) to upsert records.</p>
+            <p className="text-sm text-gray-600">Upload events CSV with date, time, all-day, team-size, team-capacity, and participant-limit fields to upsert records.</p>
+            <div className="flex items-center gap-3">
+              <a
+                href="/api/admin/csv/events/template"
+                className="inline-flex rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Download CSV Template
+              </a>
+              <span className="text-xs text-gray-500">Blank file with import-ready headers</span>
+            </div>
             <form action="/api/admin/csv/events/import" method="post" encType="multipart/form-data" className="flex flex-col sm:flex-row gap-2 sm:items-center">
               <input
                 type="file"
