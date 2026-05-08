@@ -2,31 +2,43 @@ import withPWAInit from "next-pwa";
 import defaultRuntimeCaching from "next-pwa/cache.js";
 
 const activePublicDomain = process.env.ACTIVE_PUBLIC_DOMAIN?.trim() || "";
+
+// DO Spaces endpoint host, derived from DO_SPACES_ENDPOINT
+// e.g. DO_SPACES_ENDPOINT=https://shackles-dev.sgp1.digitaloceanspaces.com
 const doSpacesEndpointHost = process.env.DO_SPACES_ENDPOINT
   ? (() => {
-      try {
-        return new URL(process.env.DO_SPACES_ENDPOINT).hostname;
-      } catch {
-        return "";
-      }
-    })()
+    try {
+      return new URL(process.env.DO_SPACES_ENDPOINT).hostname;
+    } catch {
+      return "";
+    }
+  })()
   : "";
 
+// Canonical list of remote hosts that we trust for images
 const remoteHosts = Array.from(
-  new Set([
-    "shackles-dev.sgp1.cdn.digitaloceanspaces.com",
-    "ui-avatars.com",
-    "api.qrserver.com",
-    activePublicDomain,
-    doSpacesEndpointHost,
-  ].filter(Boolean))
+  new Set(
+    [
+      // CDN host (optional, used when DO_SPACES_CDN_BASE_URL is configured)
+      "shackles-dev.sgp1.cdn.digitaloceanspaces.com",
+
+      // Avatars and external QR images
+      "ui-avatars.com",
+      "api.qrserver.com",
+
+      // App public domain (NEXT_PUBLIC_APP_URL / ACTIVE_PUBLIC_DOMAIN)
+      activePublicDomain,
+
+      // Raw DO Spaces endpoint host derived from DO_SPACES_ENDPOINT
+      // e.g. shackles-dev.sgp1.digitaloceanspaces.com
+      doSpacesEndpointHost,
+    ].filter(Boolean)
+  )
 );
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // 0. Standalone output — required for Docker / container deployments.
-  //    Next.js copies only the files needed to run the server into
-  //    .next/standalone, dramatically reducing the image footprint.
   output: "standalone",
 
   // 1. Image & Optimization Settings
@@ -57,18 +69,23 @@ const nextConfig = {
   },
 
   // 4. Dev Server Settings (development only)
-  ...(process.env.NODE_ENV === 'development' ? {
-    onDemandEntries: {
-      maxInactiveAge: 60 * 1000,
-      pagesBufferLength: 8,
-    },
-  } : {}),
+  ...(process.env.NODE_ENV === "development"
+    ? {
+      onDemandEntries: {
+        maxInactiveAge: 60 * 1000,
+        pagesBufferLength: 8,
+      },
+    }
+    : {}),
 
   // 5. Security Headers
   async headers() {
     const imgSrcHosts = remoteHosts.map((h) => `https://${h}`).join(" ");
-    const isDev = process.env.NODE_ENV === 'development';
-    const scriptSrc = isDev 
+    const isDev = process.env.NODE_ENV === "development";
+
+    // In dev we allow eval for React Refresh and inline for HMR tooling.
+    // In prod we keep it strict: no eval, no random external script hosts.
+    const scriptSrc = isDev
       ? "'self' 'unsafe-inline' 'unsafe-eval'"
       : "'self' 'unsafe-inline'";
 
@@ -78,16 +95,24 @@ const nextConfig = {
         headers: [
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" },
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(self), microphone=(), geolocation=()",
+          },
           {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
               `script-src ${scriptSrc}`,
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+              // Allow images from self, data, blob, and the canonical set of remoteHosts
               `img-src 'self' data: blob: ${imgSrcHosts}`,
               "font-src 'self' https://fonts.gstatic.com",
+              // Allow XHR/WebSocket/fetch to these origins (DO Spaces + QR API)
               "connect-src 'self' blob: https://api.qrserver.com https://*.googleapis.com https://*.upstash.io https://*.digitaloceanspaces.com https://sgp1.digitaloceanspaces.com",
               "worker-src 'self'",
               "object-src 'none'",
@@ -103,7 +128,7 @@ const nextConfig = {
   },
 };
 
-// 5. PWA Wrapper
+// 6. PWA Wrapper
 const withPWA = withPWAInit({
   dest: "public",
   disable: process.env.NODE_ENV === "development",
