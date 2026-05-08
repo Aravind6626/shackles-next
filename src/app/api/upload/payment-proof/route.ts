@@ -36,13 +36,6 @@ function inferExtension(file: File) {
   return "jpg";
 }
 
-function toReadableError(message: string) {
-  if (message === "fetch failed") {
-    return "Unable to connect to remote storage from this server/network. Check internet/firewall/proxy and verify the configured storage endpoint is reachable on port 443.";
-  }
-  return message;
-}
-
 export async function POST(request: Request) {
   try {
     // Authentication check — reject unauthenticated callers immediately
@@ -132,9 +125,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unsupported storage provider configuration." }, { status: 500 });
     }
   } catch (error) {
-    const raw = error instanceof Error ? error.message : "Failed to upload payment proof";
-    const message = toReadableError(raw);
     safeLogError("[payment-proof upload] Unhandled error", error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    const isKnownNetworkError =
+      error instanceof Error && error.message === "fetch failed";
+    const clientMessage = isKnownNetworkError
+      ? "Unable to connect to remote storage. Please try again later."
+      : "Failed to upload payment proof. Please try again.";
+    return NextResponse.json({ error: clientMessage }, { status: 500 });
   }
 }

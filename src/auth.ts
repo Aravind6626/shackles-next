@@ -13,7 +13,7 @@ const credentialsSchema = z.object({
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
-  adapter: PrismaAdapter(prisma) as any,
+  adapter: PrismaAdapter(prisma),
   providers: [
     Credentials({
       name: "Email & Password",
@@ -75,7 +75,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
      * session callback — shapes the session object exposed to the client.
      * Reads id and role from the JWT token.
      */
-    async session({ session, token }: { session: any; token: any }) {
+    async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;

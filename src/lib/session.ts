@@ -46,9 +46,7 @@ export async function requireAdmin() {
  * Note: In Auth.js, sessions are created automatically after successful authorize
  */
 export async function createSession(userId: string, role: string, displayName?: string) {
-  // In Auth.js with database sessions, this is handled automatically
-  // This function is kept for backward compatibility
-  console.warn('[Session] createSession called - Auth.js handles session creation automatically')
+  // No-op: Auth.js handles session creation automatically after authorize()
 }
 
 /**

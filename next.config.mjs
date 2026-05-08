@@ -41,7 +41,7 @@ const nextConfig = {
   productionBrowserSourceMaps: false,
 
   // 2. Server Packages
-  serverExternalPackages: ["sharp", "pdfkit", "@xenova/transformers"],
+  serverExternalPackages: ["sharp", "pdfkit"],
 
   // 3. Webpack Configuration (Merged and Fixed)
   webpack: (config) => {
@@ -52,9 +52,8 @@ const nextConfig = {
       crypto: false,
     };
 
-    // Fix for __webpack_require__ error with ONNX/Transformers
+    // Webpack externals for sharp
     config.externals.push({
-      'onnxruntime-node': 'commonjs onnxruntime-node',
       'sharp': 'commonjs sharp',
     });
 
@@ -62,7 +61,6 @@ const nextConfig = {
     config.resolve.alias = {
       ...config.resolve.alias,
       "sharp$": false,
-      "onnxruntime-node$": false,
     };
 
     return config;
@@ -86,16 +84,16 @@ const nextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" },
           {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              "script-src 'self' 'unsafe-inline'",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               `img-src 'self' data: blob: ${imgSrcHosts}`,
               "font-src 'self' https://fonts.gstatic.com",
-              "connect-src 'self' https://*.googleapis.com https://*.upstash.io",
+              "connect-src 'self' https://*.googleapis.com https://*.upstash.io https://*.digitaloceanspaces.com https://sgp1.digitaloceanspaces.com",
               "frame-ancestors 'none'",
             ].join("; "),
           },

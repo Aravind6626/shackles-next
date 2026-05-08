@@ -48,6 +48,9 @@ next-env.d.ts
 /logs/release-evidence/
 /unwanted/
 
+# Private file uploads (local storage provider)
+storage/uploads/
+
 # log and temporary files
 *.log
 *.txt
