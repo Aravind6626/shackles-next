@@ -27,10 +27,3 @@ export const DynamicAdminPage = dynamic(
   }
 );
 
-export const DynamicAdminScanner = dynamic(
-  () => import('@/app/admin/scanner-v2/page'),
-  { 
-    loading: () => "Loading...",
-    ssr: false
-  }
-);

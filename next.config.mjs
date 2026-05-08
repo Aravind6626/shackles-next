@@ -1,7 +1,21 @@
+// next.config.mjs
 import withPWAInit from "next-pwa";
 import defaultRuntimeCaching from "next-pwa/cache.js";
 
 const activePublicDomain = process.env.ACTIVE_PUBLIC_DOMAIN?.trim() || "";
+
+// Normalize ACTIVE_PUBLIC_DOMAIN to a hostname if a full URL is provided
+const activePublicDomainHost = activePublicDomain
+  ? (() => {
+    try {
+      const url = new URL(activePublicDomain);
+      return url.hostname;
+    } catch {
+      // If it's already just a hostname, keep as-is
+      return activePublicDomain;
+    }
+  })()
+  : "";
 
 // DO Spaces endpoint host, derived from DO_SPACES_ENDPOINT
 // e.g. DO_SPACES_ENDPOINT=https://shackles-dev.sgp1.digitaloceanspaces.com
@@ -27,7 +41,7 @@ const remoteHosts = Array.from(
       "api.qrserver.com",
 
       // App public domain (NEXT_PUBLIC_APP_URL / ACTIVE_PUBLIC_DOMAIN)
-      activePublicDomain,
+      activePublicDomainHost,
 
       // Raw DO Spaces endpoint host derived from DO_SPACES_ENDPOINT
       // e.g. shackles-dev.sgp1.digitaloceanspaces.com
@@ -84,10 +98,28 @@ const nextConfig = {
     const isDev = process.env.NODE_ENV === "development";
 
     // In dev we allow eval for React Refresh and inline for HMR tooling.
-    // In prod we keep it strict: no eval, no random external script hosts.
+    // In prod we keep it stricter: no eval, but still allow inline for Next's scripts.
     const scriptSrc = isDev
       ? "'self' 'unsafe-inline' 'unsafe-eval'"
       : "'self' 'unsafe-inline'";
+
+    const csp = [
+      "default-src 'self'",
+      `script-src ${scriptSrc}`,
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      // Allow images from self, data, blob, the canonical set of remoteHosts,
+      // and any DigitalOcean Spaces buckets (for presigned URLs)
+      `img-src 'self' data: blob: ${imgSrcHosts} https://*.digitaloceanspaces.com`,
+      "font-src 'self' https://fonts.gstatic.com",
+      // Allow XHR/WebSocket/fetch to these origins (DO Spaces + QR API, etc.)
+      "connect-src 'self' blob: https://api.qrserver.com https://*.googleapis.com https://*.upstash.io https://*.digitaloceanspaces.com https://sgp1.digitaloceanspaces.com",
+      "worker-src 'self'",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'none'",
+      "upgrade-insecure-requests",
+    ].join("; ");
 
     return [
       {
@@ -105,22 +137,7 @@ const nextConfig = {
           },
           {
             key: "Content-Security-Policy",
-            value: [
-              "default-src 'self'",
-              `script-src ${scriptSrc}`,
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-              // Allow images from self, data, blob, and the canonical set of remoteHosts
-              `img-src 'self' data: blob: ${imgSrcHosts}`,
-              "font-src 'self' https://fonts.gstatic.com",
-              // Allow XHR/WebSocket/fetch to these origins (DO Spaces + QR API)
-              "connect-src 'self' blob: https://api.qrserver.com https://*.googleapis.com https://*.upstash.io https://*.digitaloceanspaces.com https://sgp1.digitaloceanspaces.com",
-              "worker-src 'self'",
-              "object-src 'none'",
-              "base-uri 'self'",
-              "form-action 'self'",
-              "frame-ancestors 'none'",
-              "upgrade-insecure-requests",
-            ].join("; "),
+            value: csp,
           },
         ],
       },
@@ -136,18 +153,6 @@ const withPWA = withPWAInit({
   skipWaiting: true,
   runtimeCaching: [
     ...defaultRuntimeCaching,
-    {
-      urlPattern: ({ url }) => url.pathname.startsWith("/admin/scanner-v2"),
-      handler: "NetworkFirst",
-      options: {
-        cacheName: "scanner-v2-route",
-        networkTimeoutSeconds: 5,
-        expiration: {
-          maxEntries: 20,
-          maxAgeSeconds: 60 * 60, // 1 hour cache
-        },
-      },
-    },
   ],
 });
 

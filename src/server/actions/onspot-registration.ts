@@ -8,7 +8,7 @@ import { Permission, PaymentCaptureSource, PaymentChannel, PaymentStatus, Role, 
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { verifyUserPayment } from '@/server/actions/admin';
-import { requireGlobalPermission } from '@/server/services/scanner-auth.service';
+
 import { BCRYPT_ROUNDS } from '@/lib/crypto-config';
 
 const CreateOnSpotParticipantSchema = z.object({
@@ -57,12 +57,16 @@ type OnSpotParticipantRow = Prisma.UserGetPayload<{
 }>;
 
 async function requireOnSpotActor() {
-	const auth = await requireGlobalPermission(Permission.ONSPOT_INDIVIDUAL_REG);
-	if (!auth.ok) {
-		return { ok: false as const, error: auth.message };
+	const session = await auth();
+	if (!session?.user?.id) {
+		return { ok: false as const, error: 'Authentication required.' };
+	}
+	// Temporarily requiring ADMIN since scanner auth was removed
+	if (session.user.role !== Role.ADMIN) {
+		return { ok: false as const, error: 'Access denied.' };
 	}
 
-	return { ok: true as const, actor: auth.actor };
+	return { ok: true as const, actor: { id: session.user.id, role: session.user.role } };
 }
 
 async function requireAdminActor() {

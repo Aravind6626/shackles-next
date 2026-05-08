@@ -60,11 +60,6 @@ export const authConfig: NextAuthConfig = {
         return auth.user?.role === "ADMIN";
       }
 
-      // Scanner API routes require auth (handler-level checks role/permissions)
-      if (pathname.startsWith("/api/scanner")) {
-        return isLoggedIn;
-      }
-
       // Other API routes require authentication
       if (pathname.startsWith("/api/")) {
         return isLoggedIn;
