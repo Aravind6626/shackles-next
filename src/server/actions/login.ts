@@ -37,9 +37,33 @@ export async function loginUser(prevState: unknown, formData: FormData) {
 
   try {
     // Look up user to determine redirect path
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (user && user.role === "ADMIN") {
-      targetPath = "/admin/adminDashboard";
+    const user = await prisma.user.findUnique({ 
+      where: { email },
+      include: {
+        staffAssignments: {
+          select: { eventId: true, staffRole: true },
+          take: 1, // Just need to know if assigned to any event
+        }
+      }
+    });
+    if (user) {
+      if (user.role === "ADMIN") {
+        targetPath = "/admin/adminDashboard";
+      } else if (user.role === "COORDINATOR") {
+        // If coordinator has event assignments, send to coordinator dashboard
+        if (user.staffAssignments.length > 0) {
+          targetPath = "/staff/coordinatorDashboard";
+        } else {
+          targetPath = "/staff/no-assignment";
+        }
+      } else if (user.role === "VOLUNTEER") {
+        // If volunteer has event assignments, send to volunteer dashboard
+        if (user.staffAssignments.length > 0) {
+          targetPath = "/staff/volunteerDashboard";
+        } else {
+          targetPath = "/staff/no-assignment";
+        }
+      }
     }
   } catch (err) {
     console.error("Database error during login prep:", err);

@@ -33,7 +33,11 @@ export default async function Header() {
     : publicNavItems;
 
   let profileName: string | null = sessionDisplayName;
-  let profileHref = sessionRole === "ADMIN" ? "/admin/adminDashboard" : "/userDashboard";
+  // default user dashboard
+  let profileHref = "/userDashboard";
+  if (sessionRole === "ADMIN") profileHref = "/admin/adminDashboard";
+  else if (sessionRole === "COORDINATOR") profileHref = "/staff/coordinatorDashboard";
+  else if (sessionRole === "VOLUNTEER") profileHref = "/staff/volunteerDashboard";
 
   if (session?.userId && !profileName) {
     const user = await prisma.user.findUnique({
@@ -43,7 +47,10 @@ export default async function Header() {
 
     if (user) {
       profileName = `${user.firstName} ${user.lastName}`.trim();
-      profileHref = user.role === "ADMIN" ? "/admin/adminDashboard" : "/userDashboard";
+      if (user.role === "ADMIN") profileHref = "/admin/adminDashboard";
+      else if (user.role === "COORDINATOR") profileHref = "/staff/coordinatorDashboard";
+      else if (user.role === "VOLUNTEER") profileHref = "/staff/volunteerDashboard";
+      else profileHref = "/userDashboard";
     }
   }
 

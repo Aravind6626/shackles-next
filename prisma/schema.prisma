@@ -186,6 +186,7 @@ model User {
   // Contact Messages
   contactMessages ContactMessage[]
   staffAssignments EventStaffAssignment[]
+  judgeMarkings    JudgeMarking[]
 
   @@index([email])
   @@index([shacklesId])
@@ -297,6 +298,7 @@ model Event {
   templateSource    Event?                 @relation("EventTemplateSource", fields: [templateSourceId], references: [id])
   templateCopies    Event[]                @relation("EventTemplateSource")
   staffAssignments  EventStaffAssignment[]
+  markingCriteria   MarkingCriteria?
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
   registrations     EventRegistration[]
@@ -353,6 +355,8 @@ model Team {
   updatedAt                  DateTime            @updatedAt
   members                    EventRegistration[]
   invites                    TeamInvite[]
+  teamMarks                  TeamMark[]
+  judgeMarkings              JudgeMarking[]
 
   @@unique([eventId, nameNormalized])
   @@unique([eventId, teamCode])
@@ -464,4 +468,114 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+// --- MARKING & SCORING MODELS ---
+
+model MarkingCriteria {
+  id                 String                @id @default(cuid())
+  event              Event                 @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId            String                @unique
+  
+  name               String                @default("Default Marking Criteria")
+  description        String?
+  maxMarks           Int                   @default(100)
+  numberOfJudges     Int                   @default(3)
+  
+  components         CriteriaComponent[]
+  teamMarks          TeamMark[]
+  judgeMarkings      JudgeMarking[]
+  
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  @@index([eventId])
+}
+
+model CriteriaComponent {
+  id                      String              @id @default(cuid())
+  criteria                MarkingCriteria     @relation(fields: [markingCriteriaId], references: [id], onDelete: Cascade)
+  markingCriteriaId       String
+  
+  name                    String              // e.g., "Innovation", "Presentation"
+  description             String?
+  weightPercentage        Decimal             @db.Decimal(5, 2) // 0.00 to 100.00
+  maxMarksForComponent    Int                 // e.g., 30 out of 100
+  order                   Int                 @default(0)
+  
+  judgeMarkings           JudgeMarking[]
+  componentMarks          ComponentMark[]
+  
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+
+  @@unique([markingCriteriaId, order])
+  @@index([markingCriteriaId])
+}
+
+model TeamMark {
+  id                      String              @id @default(cuid())
+  team                    Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId                  String
+  
+  criteria                MarkingCriteria     @relation(fields: [markingCriteriaId], references: [id], onDelete: Cascade)
+  markingCriteriaId       String
+  
+  totalMarks              Decimal             @db.Decimal(6, 2) @default(0)
+  judgeCount              Int                 @default(0)
+  isSubmitted             Boolean             @default(false)
+  
+  submittedByAdmin        Boolean             @default(false)
+  submittedAt             DateTime?
+  submittedBy             String? // SuperAdmin userId
+  
+  componentMarks          ComponentMark[]
+  
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+
+  @@unique([teamId, markingCriteriaId])
+  @@index([markingCriteriaId, isSubmitted])
+}
+
+model ComponentMark {
+  id                      String              @id @default(cuid())
+  teamMark                TeamMark            @relation(fields: [teamMarkId], references: [id], onDelete: Cascade)
+  teamMarkId              String
+  
+  component               CriteriaComponent   @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  componentId             String
+  
+  averageMarks            Decimal             @db.Decimal(6, 2) @default(0)
+  judgeCount              Int                 @default(0)
+  
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+
+  @@unique([teamMarkId, componentId])
+  @@index([teamMarkId, componentId])
+}
+
+model JudgeMarking {
+  id                      String              @id @default(cuid())
+  team                    Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId                  String
+  
+  criteria                MarkingCriteria     @relation(fields: [markingCriteriaId], references: [id], onDelete: Cascade)
+  markingCriteriaId       String
+  
+  component               CriteriaComponent   @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  componentId             String
+  
+  judge                   User                @relation(fields: [judgeId], references: [id], onDelete: Cascade)
+  judgeId                 String
+  
+  marksAwarded            Decimal             @db.Decimal(6, 2)
+  judgeNotes              String?
+  
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+
+  @@unique([teamId, markingCriteriaId, componentId, judgeId])
+  @@index([markingCriteriaId, judgeId])
 }

@@ -1,5 +1,3 @@
-'use server'
-
 import { getSession } from "@/lib/session";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -294,7 +292,15 @@ export default async function AdminDashboard() {
               <p className="text-gray-900 font-semibold text-sm">Contact Messages</p>
             </a>
 
-
+            {/* QR Scanner */}
+            <a href="/admin/scanner" className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow text-center">
+              <div className="bg-cyan-100 w-16 h-16 rounded-lg flex items-center justify-center mx-auto mb-3">
+                <svg className="w-8 h-8 text-cyan-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M3 4a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 11-2 0V5H4a1 1 0 01-1-1zm11-1a1 1 0 100 2h1v2a1 1 0 102 0V4a1 1 0 00-1-1h-2zM3 14a1 1 0 00-1 1v2a1 1 0 001 1h2a1 1 0 100-2H4v-1a1 1 0 00-1-1zm14 0a1 1 0 00-1 1v1h-1a1 1 0 100 2h2a1 1 0 001-1v-2a1 1 0 00-1-1z"></path>
+                </svg>
+              </div>
+              <p className="text-gray-900 font-semibold text-sm">QR Scanner</p>
+            </a>
 
             {/* Kit Distribution */}
             <a href="/admin/users?kit=ISSUED" className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow text-center">
@@ -326,6 +332,26 @@ export default async function AdminDashboard() {
                 </svg>
               </div>
               <p className="text-gray-900 font-semibold text-sm">Audit Logs</p>
+            </a>
+
+            {/* Marking & Scoring */}
+            <a href="/admin/marking" className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow text-center">
+              <div className="bg-violet-100 w-16 h-16 rounded-lg flex items-center justify-center mx-auto mb-3">
+                <svg className="w-8 h-8 text-violet-700" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M5 3a2 2 0 00-2 2v12a1 1 0 001.447.894L10 15.118l5.553 2.776A1 1 0 0017 17V5a2 2 0 00-2-2H5zm2 4a1 1 0 000 2h6a1 1 0 100-2H7zm0 4a1 1 0 000 2h3a1 1 0 100-2H7z"></path>
+                </svg>
+              </div>
+              <p className="text-gray-900 font-semibold text-sm">Marking & Scoring</p>
+            </a>
+
+            {/* Live Dashboard */}
+            <a href="/admin/liveDashboard" className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow text-center">
+              <div className="bg-lime-100 w-16 h-16 rounded-lg flex items-center justify-center mx-auto mb-3">
+                <svg className="w-8 h-8 text-lime-700" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M3 3a1 1 0 000 2h14a1 1 0 100-2H3zm2 4a1 1 0 00-1 1v8a1 1 0 001 1h10a1 1 0 001-1V8a1 1 0 00-1-1H5zm1 7l2.2-2.2 1.8 1.8 3.2-3.2 1.4 1.4-4.6 4.6-1.8-1.8L7 16l-1-1z"></path>
+                </svg>
+              </div>
+              <p className="text-gray-900 font-semibold text-sm">Live Dashboard</p>
             </a>
           </div>
         </div>

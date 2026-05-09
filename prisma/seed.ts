@@ -61,6 +61,43 @@ async function main() {
 
   console.log({ admin })
 
+  // --- SEED STAFF USERS ---
+  const coordinator = await prisma.user.upsert({
+    where: { email: 'coordinator@shackles.com' },
+    update: {},
+    create: {
+      email: 'coordinator@shackles.com',
+      firstName: 'Event',
+      lastName: 'Coordinator',
+      phone: '9876543210',
+      password,
+      role: 'COORDINATOR',
+      collegeName: 'Staff',
+      collegeLoc: 'Event',
+      department: 'Operations',
+      yearOfStudy: 'Staff',
+    },
+  })
+
+  const volunteer = await prisma.user.upsert({
+    where: { email: 'volunteer@shackles.com' },
+    update: {},
+    create: {
+      email: 'volunteer@shackles.com',
+      firstName: 'Event',
+      lastName: 'Volunteer',
+      phone: '9876543211',
+      password,
+      role: 'VOLUNTEER',
+      collegeName: 'Staff',
+      collegeLoc: 'Event',
+      department: 'Operations',
+      yearOfStudy: 'Staff',
+    },
+  })
+
+  console.log('Staff users seeded:', { coordinator, volunteer })
+
   await prisma.rolePermission.deleteMany({
     where: {
       role: {
@@ -110,6 +147,71 @@ async function main() {
     })
   }
   console.log("Template events seeded")
+
+  // --- ASSIGN STAFF TO EVENTS ---
+  const paperEvent = await prisma.event.findFirst({
+    where: { year: activeYear, name: "Paper Presentation" },
+  })
+
+  const cadevent = await prisma.event.findFirst({
+    where: { year: activeYear, name: "CAD Modelling" },
+  })
+
+  if (paperEvent) {
+    await prisma.eventStaffAssignment.upsert({
+      where: {
+        eventId_userId_staffRole: {
+          eventId: paperEvent.id,
+          userId: coordinator.id,
+          staffRole: 'COORDINATOR',
+        },
+      },
+      update: {},
+      create: {
+        eventId: paperEvent.id,
+        userId: coordinator.id,
+        staffRole: 'COORDINATOR',
+      },
+    })
+
+    await prisma.eventStaffAssignment.upsert({
+      where: {
+        eventId_userId_staffRole: {
+          eventId: paperEvent.id,
+          userId: volunteer.id,
+          staffRole: 'VOLUNTEER',
+        },
+      },
+      update: {},
+      create: {
+        eventId: paperEvent.id,
+        userId: volunteer.id,
+        staffRole: 'VOLUNTEER',
+      },
+    })
+
+    console.log('Staff assigned to Paper Presentation event')
+  }
+
+  if (cadevent) {
+    await prisma.eventStaffAssignment.upsert({
+      where: {
+        eventId_userId_staffRole: {
+          eventId: cadevent.id,
+          userId: coordinator.id,
+          staffRole: 'COORDINATOR',
+        },
+      },
+      update: {},
+      create: {
+        eventId: cadevent.id,
+        userId: coordinator.id,
+        staffRole: 'COORDINATOR',
+      },
+    })
+
+    console.log('Coordinator assigned to CAD Modelling event')
+  }
 }
 
 main()
