@@ -136,7 +136,9 @@ export default async function CoordinatorDashboard() {
             </div>
           </div>
         )}
-
+        <a href={`/admin/marking?event=${event.id}`} className="...your button styles...">
+        Allocate Marks
+        </a>
         {/* Quick Actions */}
         {assignedEvents.length > 0 && (
           <div className="bg-white rounded-lg shadow-md p-6">
