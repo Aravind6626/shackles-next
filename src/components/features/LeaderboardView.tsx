@@ -52,6 +52,7 @@ export function LeaderboardView({ eventId, onRefresh }: LeaderboardViewProps) {
   const fetchLeaderboard = async () => {
     try {
       setError('')
+      setLoading(true)
       const response = await fetch(`/api/marking/leaderboard?eventId=${eventId}`)
       const data = await response.json()
 

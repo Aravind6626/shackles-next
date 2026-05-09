@@ -60,10 +60,10 @@ export default async function LiveDashboardPage({
     : leaderboardEvents[0];
 
   const liveEventCount = events.filter((event) => event.isActive && !event.isArchived).length;
-  const activeRegistrations = events.reduce(
-    (sum, event) => sum + event.registrations.reduce((eventSum, registration) => eventSum + (registration.teamSize || 1), 0),
-    0
-  );
+ const activeRegistrations = events.reduce(
+  (sum, event) => sum + event.registrations.length,
+  0
+);
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6 md:p-8">

@@ -79,137 +79,127 @@ export async function POST(req: NextRequest) {
     }
 
     // Process marks in transaction
-    const results = []
+    const results: Array<{
+  teamId: string;
+  teamName?: string;
+  success: boolean;
+  error?: string;
+  totalMarks?: number;
+  componentMarksCount?: number;
+}> = []
 
-    for (const tm of teamMarks) {
-      try {
-        // Verify team belongs to event
-        const team = await prisma.team.findFirst({
-          where: { id: tm.teamId, eventId },
-          select: { id: true, name: true },
+await prisma.$transaction(async (tx) => {
+  for (const tm of teamMarks) {
+    try {
+      const team = await tx.team.findFirst({
+        where: { id: tm.teamId, eventId },
+        select: { id: true, name: true },
+      })
+
+      if (!team) {
+        results.push({ teamId: tm.teamId, success: false, error: 'Team not found for this event' })
+        continue
+      }
+
+      let teamMark = await tx.teamMark.findFirst({
+        where: { teamId: tm.teamId, markingCriteriaId: criteria.id },
+      })
+
+      if (!teamMark) {
+        teamMark = await tx.teamMark.create({
+          data: { teamId: tm.teamId, markingCriteriaId: criteria.id, isSubmitted: false },
         })
+      }
 
-        if (!team) {
-          results.push({
-            teamId: tm.teamId,
-            success: false,
-            error: 'Team not found for this event',
-          })
-          continue
-        }
-
-        // Get or create TeamMark record
-        let teamMark = await prisma.teamMark.findFirst({
-          where: { teamId: tm.teamId, markingCriteriaId: criteria.id },
-        })
-
-        if (!teamMark) {
-          teamMark = await prisma.teamMark.create({
-            data: {
+      if (tm.judgeId) {
+        for (const cm of tm.componentMarks) {
+          const existing = await tx.judgeMarking.findFirst({
+            where: {
               teamId: tm.teamId,
               markingCriteriaId: criteria.id,
-              isSubmitted: false,
+              componentId: cm.componentId,
+              judgeId: tm.judgeId,
             },
+            select: { id: true },
           })
-        }
-
-        // If judgeId provided, store individual judge marking (for multi-judge scenarios)
-        if (tm.judgeId) {
-          for (const cm of tm.componentMarks) {
-            // Check if judge already marked this component
-            const existing = await prisma.judgeMarking.findFirst({
-              where: {
+          if (!existing) {
+            await tx.judgeMarking.create({
+              data: {
                 teamId: tm.teamId,
                 markingCriteriaId: criteria.id,
                 componentId: cm.componentId,
                 judgeId: tm.judgeId,
+                marksAwarded: cm.marks,
               },
-              select: { id: true },
             })
-
-            if (!existing) {
-              await prisma.judgeMarking.create({
-                data: {
-                  teamId: tm.teamId,
-                  markingCriteriaId: criteria.id,
-                  componentId: cm.componentId,
-                  judgeId: tm.judgeId,
-                  marksAwarded: cm.marks,
-                },
-              })
-            }
           }
         }
+      }
 
-        // Update TeamMark with aggregated marks
-        let totalMarks = 0
-        const componentUpdates = []
+      let totalMarks = 0
+      const componentUpdates = []
 
-        for (const component of criteria.components) {
-          const marksForComponent = tm.componentMarks.find(m => m.componentId === component.id)
-          if (!marksForComponent) continue
+      for (const component of criteria.components) {
+        const marksForComponent = tm.componentMarks.find(m => m.componentId === component.id)
+        if (!marksForComponent) continue
 
-          totalMarks += marksForComponent.marks
+        // ✅ FIX 4 applied here: weight-adjusted total
+        const weighted = (marksForComponent.marks / component.maxMarksForComponent) * component.weightPercentage
+        totalMarks += weighted
 
-          // Update or create ComponentMark
-          const componentMark = await prisma.componentMark.findFirst({
-            where: {
-              teamMarkId: teamMark.id,
-              componentId: component.id,
+        // ✅ FIX 5 applied here: true average if judgeId present
+        let finalAverage = marksForComponent.marks
+        if (tm.judgeId) {
+          const allJudgeMarks = await tx.judgeMarking.findMany({
+            where: { teamId: tm.teamId, markingCriteriaId: criteria.id, componentId: component.id },
+          })
+          finalAverage = allJudgeMarks.reduce((s, j) => s + Number(j.marksAwarded), 0) / allJudgeMarks.length
+        }
+
+        const componentMark = await tx.componentMark.findFirst({
+          where: { teamMarkId: teamMark.id, componentId: component.id },
+        })
+
+        if (componentMark) {
+          await tx.componentMark.update({
+            where: { id: componentMark.id },
+            data: {
+              averageMarks: finalAverage,
+              judgeCount: tm.judgeId ? componentMark.judgeCount + 1 : 1,
             },
           })
-
-          if (componentMark) {
-            await prisma.componentMark.update({
-              where: { id: componentMark.id },
-              data: {
-                averageMarks: marksForComponent.marks,
-                judgeCount: tm.judgeId ? componentMark.judgeCount + 1 : 1,
-              },
-            })
-          } else {
-            await prisma.componentMark.create({
-              data: {
-                teamMarkId: teamMark.id,
-                componentId: component.id,
-                averageMarks: marksForComponent.marks,
-                judgeCount: tm.judgeId ? 1 : 1,
-              },
-            })
-          }
-
-          componentUpdates.push({
-            componentId: component.id,
-            marks: marksForComponent.marks,
+        } else {
+          await tx.componentMark.create({
+            data: {
+              teamMarkId: teamMark.id,
+              componentId: component.id,
+              averageMarks: finalAverage,
+              judgeCount: 1,
+            },
           })
         }
 
-        // Update total marks on TeamMark
-        await prisma.teamMark.update({
-          where: { id: teamMark.id },
-          data: {
-            totalMarks,
-            isSubmitted: true,
-            submittedAt: new Date(),
-          },
-        })
-
-        results.push({
-          teamId: tm.teamId,
-          teamName: team.name,
-          success: true,
-          totalMarks,
-          componentMarksCount: componentUpdates.length,
-        })
-      } catch (error) {
-        console.error(`Error submitting marks for team ${tm.teamId}:`, error)
-        results.push({
-          teamId: tm.teamId,
-          success: false,
-          error: 'Failed to submit marks',
-        })
+        componentUpdates.push({ componentId: component.id, marks: marksForComponent.marks })
       }
+
+      await tx.teamMark.update({
+        where: { id: teamMark.id },
+        data: { totalMarks, isSubmitted: true, submittedAt: new Date() },
+      })
+
+      results.push({
+        teamId: tm.teamId,
+        teamName: team.name,
+        success: true,
+        totalMarks,
+        componentMarksCount: componentUpdates.length,
+      })
+    } catch (error) {
+      console.error(`Error submitting marks for team ${tm.teamId}:`, error)
+      results.push({ teamId: tm.teamId, success: false, error: 'Failed to submit marks' })
     }
+  }
+})
 
     // Check if any succeeded
     const succeeded = results.filter(r => r.success).length

@@ -12,6 +12,7 @@ interface ScoringSetupProps {
 }
 
 interface Component {
+  uid: string
   id?: string
   name: string
   description?: string
@@ -29,35 +30,11 @@ export function ScoringSetup({ eventId, eventName, onSaved }: ScoringSetupProps)
     numberOfJudges: 3,
   })
   const [components, setComponents] = useState<Component[]>([
-    {
-      name: 'Innovation',
-      description: 'Originality and creativity',
-      weightPercentage: 25,
-      maxMarksForComponent: 25,
-      order: 0,
-    },
-    {
-      name: 'Presentation',
-      description: 'Clarity and organization',
-      weightPercentage: 25,
-      maxMarksForComponent: 25,
-      order: 1,
-    },
-    {
-      name: 'Implementation',
-      description: 'Feasibility and execution',
-      weightPercentage: 25,
-      maxMarksForComponent: 25,
-      order: 2,
-    },
-    {
-      name: 'Impact',
-      description: 'Relevance and significance',
-      weightPercentage: 25,
-      maxMarksForComponent: 25,
-      order: 3,
-    },
-  ])
+  { uid: 'c0', name: 'Innovation', description: 'Originality and creativity', weightPercentage: 25, maxMarksForComponent: 25, order: 0 },
+  { uid: 'c1', name: 'Presentation', description: 'Clarity and organization', weightPercentage: 25, maxMarksForComponent: 25, order: 1 },
+  { uid: 'c2', name: 'Implementation', description: 'Feasibility and execution', weightPercentage: 25, maxMarksForComponent: 25, order: 2 },
+  { uid: 'c3', name: 'Impact', description: 'Relevance and significance', weightPercentage: 25, maxMarksForComponent: 25, order: 3 },
+])
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -65,6 +42,7 @@ export function ScoringSetup({ eventId, eventName, onSaved }: ScoringSetupProps)
 
   const handleAddComponent = () => {
     const newComponent: Component = {
+      uid: `c${Date.now()}`,
       name: 'New Component',
       weightPercentage: 0,
       maxMarksForComponent: 10,
@@ -73,16 +51,12 @@ export function ScoringSetup({ eventId, eventName, onSaved }: ScoringSetupProps)
     setComponents([...components, newComponent])
   }
 
-  const handleRemoveComponent = (order: number) => {
-    setComponents(components.filter(c => c.order !== order))
-  }
-
-  const handleComponentChange = (order: number, field: string, value: any) => {
-    setComponents(
-      components.map(c =>
-        c.order === order ? { ...c, [field]: value } : c
-      )
-    )
+  const handleRemoveComponent = (uid: string) => {
+  setComponents(components.filter(c => c.uid !== uid))
+}
+  
+  const handleComponentChange = (uid: string, field: string, value: any) => {
+  setComponents(components.map(c => c.uid === uid ? { ...c, [field]: value } : c))
   }
 
   const handleSubmit = async () => {
@@ -90,6 +64,12 @@ export function ScoringSetup({ eventId, eventName, onSaved }: ScoringSetupProps)
     setSuccess('')
 
     // Validation
+    const sumOfComponentMax = components.reduce((s, c) => s + c.maxMarksForComponent, 0)
+    if (sumOfComponentMax !== criteria.maxMarks) {
+     setError(`Component max marks sum (${sumOfComponentMax}) must equal Total Max Marks (${criteria.maxMarks})`)
+     return
+    }
+    
     if (totalWeight !== 100) {
       setError(`Component weights must sum to 100% (currently ${totalWeight}%)`)
       return
@@ -185,7 +165,7 @@ export function ScoringSetup({ eventId, eventName, onSaved }: ScoringSetupProps)
             <h3 className="font-semibold mb-4">Scoring Components</h3>
             <div className="space-y-4">
               {components.map((comp, idx) => (
-                <Card key={comp.order} className="bg-slate-50">
+                <Card key={comp.uid} className="bg-slate-50">
                   <CardContent className="pt-4">
                     <div className="grid gap-3">
                       <div className="grid grid-cols-2 gap-3">
@@ -193,7 +173,7 @@ export function ScoringSetup({ eventId, eventName, onSaved }: ScoringSetupProps)
                           <label className="text-xs font-medium">Name</label>
                           <Input
                             value={comp.name}
-                            onChange={e => handleComponentChange(comp.order, 'name', e.target.value)}
+                            onChange={e => handleComponentChange(comp.uid, 'name', e.target.value)}
                             placeholder="Component name"
                           />
                         </div>
@@ -202,7 +182,7 @@ export function ScoringSetup({ eventId, eventName, onSaved }: ScoringSetupProps)
                           <Input
                             type="number"
                             value={comp.order}
-                            onChange={e => handleComponentChange(comp.order, 'order', parseInt(e.target.value))}
+                            onChange={e => handleComponentChange(comp.uid, 'order', parseInt(e.target.value))}
                             min={0}
                           />
                         </div>
@@ -211,7 +191,7 @@ export function ScoringSetup({ eventId, eventName, onSaved }: ScoringSetupProps)
                         <label className="text-xs font-medium">Description</label>
                         <Input
                           value={comp.description || ''}
-                          onChange={e => handleComponentChange(comp.order, 'description', e.target.value)}
+                          onChange={e => handleComponentChange(comp.uid, 'description', e.target.value)}
                           placeholder="What does this component measure?"
                         />
                       </div>
@@ -221,7 +201,7 @@ export function ScoringSetup({ eventId, eventName, onSaved }: ScoringSetupProps)
                           <Input
                             type="number"
                             value={comp.weightPercentage}
-                            onChange={e => handleComponentChange(comp.order, 'weightPercentage', parseFloat(e.target.value))}
+                            onChange={e => handleComponentChange(comp.uid, 'weightPercentage', parseFloat(e.target.value))}
                             min={0}
                             max={100}
                             step={0.01}
@@ -232,7 +212,7 @@ export function ScoringSetup({ eventId, eventName, onSaved }: ScoringSetupProps)
                           <Input
                             type="number"
                             value={comp.maxMarksForComponent}
-                            onChange={e => handleComponentChange(comp.order, 'maxMarksForComponent', parseInt(e.target.value))}
+                            onChange={e => handleComponentChange(comp.uid, 'maxMarksForComponent', parseInt(e.target.value))}
                             min={1}
                           />
                         </div>
@@ -240,7 +220,7 @@ export function ScoringSetup({ eventId, eventName, onSaved }: ScoringSetupProps)
                       <Button
                         variant="destructive"
                         size="sm"
-                        onClick={() => handleRemoveComponent(comp.order)}
+                        onClick={() => handleRemoveComponent(comp.uid)}
                       >
                         Remove Component
                       </Button>
