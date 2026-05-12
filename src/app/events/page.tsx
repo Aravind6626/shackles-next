@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import LiveSyncRefresher from "@/components/common/LiveSyncRefresher";
+import { prisma } from "@/lib/prisma";
 
 const eventCategories = [
   {
@@ -25,7 +27,66 @@ const eventCategories = [
   },
 ];
 
-export default function Events() {
+const TYPE_TO_CATEGORY: Record<string, string> = {
+  TECHNICAL: "technical",
+  "NON-TECHNICAL": "non-technical",
+  SPECIAL: "special",
+};
+
+export default async function Events({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const resolvedParams = (await searchParams) ?? {};
+  const inviteToken = typeof resolvedParams.inviteToken === "string" ? resolvedParams.inviteToken : "";
+  const teamCode = typeof resolvedParams.teamCode === "string" ? resolvedParams.teamCode : "";
+  const joinCode = typeof resolvedParams.joinCode === "string" ? resolvedParams.joinCode : "";
+
+  // If invite params are present, look up the event and redirect to the correct category page
+  if (inviteToken || teamCode || joinCode) {
+    let eventType: string | null = null;
+
+    if (inviteToken) {
+      const invite = await prisma.teamInvite.findUnique({
+        where: { token: inviteToken },
+        select: {
+          team: {
+            select: {
+              event: { select: { type: true } },
+            },
+          },
+        },
+      });
+      eventType = invite?.team?.event?.type ?? null;
+    }
+
+    if (!eventType && teamCode) {
+      const team = await prisma.team.findFirst({
+        where: { teamCode: teamCode.toUpperCase() },
+        select: { event: { select: { type: true } } },
+      });
+      eventType = team?.event?.type ?? null;
+    }
+
+    if (!eventType && joinCode) {
+      const team = await prisma.team.findFirst({
+        where: { joinCode },
+        select: { event: { select: { type: true } } },
+      });
+      eventType = team?.event?.type ?? null;
+    }
+
+    if (eventType) {
+      const categorySlug = TYPE_TO_CATEGORY[eventType] ?? "technical";
+      const params = new URLSearchParams();
+      if (inviteToken) params.set("inviteToken", inviteToken);
+      if (teamCode) params.set("teamCode", teamCode);
+      if (joinCode) params.set("joinCode", joinCode);
+      redirect(`/events/${categorySlug}?${params.toString()}`);
+    }
+  }
+
   const mergedCategories = eventCategories;
 
   const borderColorMap = {
