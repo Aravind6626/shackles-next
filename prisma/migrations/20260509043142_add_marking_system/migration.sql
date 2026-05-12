@@ -28,8 +28,12 @@ ALTER TYPE "Role" ADD VALUE 'VOLUNTEER';
 -- the enum.
 
 
-ALTER TYPE "TeamStatus" ADD VALUE 'OPEN';
-ALTER TYPE "TeamStatus" ADD VALUE 'CANCELLED';
+-- AlterEnum
+ALTER TYPE "TeamStatus" RENAME TO "TeamStatus_old";
+CREATE TYPE "TeamStatus" AS ENUM ('OPEN', 'DRAFT', 'LOCKED', 'COMPLETED', 'CANCELLED');
+ALTER TABLE "Team" ALTER COLUMN "status" DROP DEFAULT;
+ALTER TABLE "Team" ALTER COLUMN "status" TYPE "TeamStatus" USING "status"::text::"TeamStatus";
+DROP TYPE "TeamStatus_old";
 
 -- DropIndex
 DROP INDEX "Payment_transactionId_key";
