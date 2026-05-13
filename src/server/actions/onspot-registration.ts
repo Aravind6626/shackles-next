@@ -1,38 +1,11 @@
 'use server'
 
-import { z } from 'zod';
-import { hash } from 'bcryptjs';
 import { revalidatePath } from 'next/cache';
 import type { Prisma } from '@prisma/client';
-import { Permission, PaymentCaptureSource, PaymentChannel, PaymentStatus, Role, RegistrationType } from '@prisma/client';
+import { PaymentCaptureSource, PaymentChannel, PaymentStatus, Role } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { verifyUserPayment } from '@/server/actions/admin';
-
-import { BCRYPT_ROUNDS } from '@/lib/crypto-config';
-
-const CreateOnSpotParticipantSchema = z.object({
-	firstName: z.string().trim().min(2),
-	lastName: z.string().trim().min(1),
-	email: z.string().trim().email(),
-	phone: z.string().trim().min(10),
-	password: z.string().min(8),
-	collegeName: z.string().trim().min(2),
-	collegeLoc: z.string().trim().min(2),
-	department: z.string().trim().min(2),
-	yearOfStudy: z.string().trim().min(1),
-	gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
-	registrationType: z.enum(['GENERAL', 'WORKSHOP', 'COMBO']),
-	amount: z.number().int().nonnegative(),
-	paymentChannel: z.enum(['CASH', 'ONLINE']),
-	transactionId: z.string().trim().optional(),
-	proofUrl: z.string().trim().optional(),
-	proofPath: z.string().trim().optional(),
-	stationId: z.string().trim().optional(),
-	deviceId: z.string().trim().optional(),
-	referralSource: z.string().trim().optional(),
-	notes: z.string().trim().optional(),
-});
 
 type OnSpotListFilters = {
 	search?: string;
@@ -56,19 +29,6 @@ type OnSpotParticipantRow = Prisma.UserGetPayload<{
 	};
 }>;
 
-async function requireOnSpotActor() {
-	const session = await auth();
-	if (!session?.user?.id) {
-		return { ok: false as const, error: 'Authentication required.' };
-	}
-	// Temporarily requiring ADMIN since scanner auth was removed
-	if (session.user.role !== Role.ADMIN) {
-		return { ok: false as const, error: 'Access denied.' };
-	}
-
-	return { ok: true as const, actor: { id: session.user.id, role: session.user.role } };
-}
-
 async function requireAdminActor() {
 	const session = await auth();
 	if (!session?.user?.id) {
@@ -78,83 +38,6 @@ async function requireAdminActor() {
 		return { ok: false as const, error: 'Admin access required.' };
 	}
 	return { ok: true as const, actor: { id: session.user.id, role: session.user.role } };
-}
-
-export async function createOnSpotParticipant(input: unknown) {
-	const actorResult = await requireOnSpotActor();
-	if (!actorResult.ok) return { success: false, error: actorResult.error };
-
-	const parsed = CreateOnSpotParticipantSchema.safeParse(input);
-	if (!parsed.success) {
-		return { success: false, error: 'Invalid on-spot registration data.' };
-	}
-
-	const data = parsed.data;
-
-	const existingUser = await prisma.user.findUnique({ where: { email: data.email } });
-	if (existingUser) {
-		return { success: false, error: 'Email already exists. Use existing account flow.' };
-	}
-
-	if (data.paymentChannel === PaymentChannel.ONLINE && !data.transactionId && !data.proofUrl && !data.proofPath) {
-		return { success: false, error: 'Online on-spot payment needs transaction reference or proof.' };
-	}
-
-	const passwordHash = await hash(data.password, BCRYPT_ROUNDS);
-	const fallbackTransaction = `ONSPOT-${Date.now()}`;
-
-	const created = await prisma.$transaction(async (tx) => {
-		const user = await tx.user.create({
-			data: {
-				firstName: data.firstName,
-				lastName: data.lastName,
-				email: data.email.toLowerCase(),
-				phone: data.phone,
-				password: passwordHash,
-				collegeName: data.collegeName,
-				collegeLoc: data.collegeLoc,
-				department: data.department,
-				yearOfStudy: data.yearOfStudy,
-				gender: data.gender,
-				role: Role.APPLICANT,
-				registrationType: data.registrationType as RegistrationType,
-				payment: {
-					create: {
-						amount: data.amount,
-						transactionId: data.transactionId || fallbackTransaction,
-						proofUrl: data.proofUrl || '',
-						proofPath: data.proofPath,
-						status: PaymentStatus.PENDING,
-						paymentChannel: data.paymentChannel,
-						captureSource: PaymentCaptureSource.ON_SPOT,
-					},
-				},
-			},
-			select: { id: true },
-		});
-
-		await tx.onSpotProfile.create({
-			data: {
-				userId: user.id,
-				createdByUserId: actorResult.actor.id,
-				stationId: data.stationId || null,
-				deviceId: data.deviceId || null,
-				referralSource: data.referralSource || null,
-				notes: data.notes || null,
-			},
-		});
-
-		return user;
-	});
-
-	revalidatePath('/admin/onspot-registration');
-	revalidatePath('/admin/adminDashboard');
-
-	return {
-		success: true,
-		userId: created.id,
-		message: 'On-spot participant created. Verify payment to activate participant access.',
-	};
 }
 
 export async function approveOnSpotPayment(input: { userId: string; deviceId?: string; note?: string }) {

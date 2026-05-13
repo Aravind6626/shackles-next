@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getSession } from '@/lib/session'
+import { getSession, checkEventStaff } from '@/lib/session'
 
 // GET: Fetch leaderboard with aggregated team marks
 // SuperAdmin only
@@ -16,11 +16,11 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    // Check if user is SuperAdmin
-    const session = await getSession()
-    if (!session || session.role !== 'ADMIN') {
+    // Check if user is SuperAdmin or assigned staff for this event
+    const { allowed, error } = await checkEventStaff(eventId)
+    if (!allowed) {
       return NextResponse.json(
-        { error: 'Only SuperAdmin can view leaderboard' },
+        { error: error || 'Only SuperAdmin or assigned staff can view leaderboard' },
         { status: 403 }
       )
     }

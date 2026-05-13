@@ -275,7 +275,7 @@ export default function EventAttendanceScanner({
               onScan={handleScan}
               onError={(error) => console.error('QR Scanner error:', error)}
               constraints={{ facingMode: 'environment' }}
-              components={{ audio: false }}
+              components={{}}
              />
           )}
         </div>

@@ -107,7 +107,6 @@ export async function getStaffAssignedEvents() {
   const assignments = await prisma.eventStaffAssignment.findMany({
     where: {
       userId: session.userId,
-      staffRole: userRole === 'COORDINATOR' ? 'COORDINATOR' : 'VOLUNTEER',
     },
     include: {
       event: {
@@ -122,7 +121,10 @@ export async function getStaffAssignedEvents() {
     },
   })
 
-  return assignments.map(a => a.event)
+  return assignments.map(a => ({
+    ...a.event,
+    staffRole: a.staffRole,
+  }))
 }
 
 /**
@@ -160,12 +162,11 @@ export async function checkEventStaff(
     return { allowed: false, error: 'Forbidden role' }
   }
 
-  // Check if user is assigned to this event
+  // Check if user is assigned to this event (either as COORDINATOR or VOLUNTEER)
   const assignment = await prisma.eventStaffAssignment.findFirst({
     where: {
       eventId,
       userId: session.userId,
-      staffRole: userRole === 'COORDINATOR' ? 'COORDINATOR' : 'VOLUNTEER',
     },
     select: { id: true },
   })
@@ -299,8 +300,8 @@ export async function requireMarkSubmissionAccess(eventId: string) {
     return session
   }
 
-  // Only COORDINATOR can submit in redirecting context
-  if (session.role !== 'COORDINATOR') {
+  // Only staff can submit in redirecting context
+  if (session.role !== 'COORDINATOR' && session.role !== 'VOLUNTEER') {
     redirect('/')
   }
 
@@ -339,9 +340,9 @@ export async function checkCanManageRegistrations(
     return { allowed: true, session }
   }
 
-  // Only COORDINATOR (and ADMIN, covered above) can manage
-  if (session.role !== 'COORDINATOR') {
-    return { allowed: false, error: 'Only coordinators and admins can manage registrations' }
+  // Only staff (COORDINATOR/VOLUNTEER) can be assigned to manage events
+  if (session.role !== 'COORDINATOR' && session.role !== 'VOLUNTEER') {
+    return { allowed: false, error: 'Unauthorized role' }
   }
 
   // Check if COORDINATOR is assigned to this event
@@ -373,8 +374,8 @@ export async function requireManageRegistrationsAccess(eventId: string) {
     return session
   }
 
-  // Only COORDINATOR can manage in redirecting context
-  if (session.role !== 'COORDINATOR') {
+  // Only staff can manage in redirecting context
+  if (session.role !== 'COORDINATOR' && session.role !== 'VOLUNTEER') {
     redirect('/')
   }
 

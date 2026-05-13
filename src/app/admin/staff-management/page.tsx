@@ -9,8 +9,8 @@ import {
   listAvailableEvents,
 } from '@/server/actions/staff-management'
 
-type StaffUser = Awaited<ReturnType<typeof listStaffUsers>>['data'][number]
-type EventType = Awaited<ReturnType<typeof listAvailableEvents>>['data'][number]
+type StaffUser = NonNullable<Awaited<ReturnType<typeof listStaffUsers>>['data']>[number]
+type EventType = NonNullable<Awaited<ReturnType<typeof listAvailableEvents>>['data']>[number]
 
 export default function StaffManagementPage() {
   const [staffUsers, setStaffUsers] = useState<StaffUser[]>([])
@@ -32,7 +32,6 @@ export default function StaffManagementPage() {
   const [assignForm, setAssignForm] = useState({
     userId: '',
     eventId: '',
-    staffRole: 'VOLUNTEER' as const,
   })
 
   // Load data
@@ -76,10 +75,11 @@ export default function StaffManagementPage() {
         const res = await listStaffUsers()
         if (res.success) setStaffUsers(res.data || [])
       } else {
-        const errorText = typeof result.error === 'string' 
-          ? result.error 
-          : typeof result.error === 'object' && result.error !== null
-            ? Object.values(result.error).flat().join(', ')
+        const errorRes = result as { success: false; error: any }
+        const errorText = typeof errorRes.error === 'string'
+          ? errorRes.error
+          : errorRes.error && typeof errorRes.error === 'object'
+            ? Object.values(errorRes.error as Record<string, string[]>).flat().join(', ')
             : 'Failed to create staff user'
             
         setMessage({
@@ -100,10 +100,16 @@ export default function StaffManagementPage() {
 
       if (result.success) {
         setMessage({ type: 'success', text: result.message || 'Staff assigned to event' })
-        setAssignForm({ userId: '', eventId: '', staffRole: 'VOLUNTEER' })
+        setAssignForm({ userId: '', eventId: '' })
         // Reload staff list
         const res = await listStaffUsers()
         if (res.success) setStaffUsers(res.data || [])
+
+        // Redirection logic for Kit Distribution
+        const data = result.data as { eventName?: string }
+        if (data.eventName === 'KIT DISTRIBUTION') {
+          window.location.href = '/staff/volunteerDashboard'
+        }
       } else {
         setMessage({
           type: 'error',
@@ -375,17 +381,16 @@ export default function StaffManagementPage() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-1">Staff Role</label>
-                <select
-                  value={assignForm.staffRole}
-                  onChange={e => setAssignForm({ ...assignForm, staffRole: e.target.value as any })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="VOLUNTEER">Volunteer</option>
-                  <option value="COORDINATOR">Coordinator</option>
-                </select>
-              </div>
+              {assignForm.userId && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    Staff Role: <span className="font-bold">{staffUsers.find(s => s.id === assignForm.userId)?.role}</span>
+                  </p>
+                  <p className="text-xs text-blue-600 mt-1 italic">
+                    The role is automatically determined by the staff member's profile.
+                  </p>
+                </div>
+              )}
 
               <button
                 type="submit"

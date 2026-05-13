@@ -3,7 +3,6 @@ import { getSession } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
 import {
   approveOnSpotPayment,
-  createOnSpotParticipant,
   getOnSpotParticipants,
   getOnSpotSummary,
   rejectOnSpotPayment,
@@ -69,7 +68,7 @@ export default async function OnSpotRegistrationPage({ searchParams }: { searchP
   }
 
   const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
-  const tab = resolvedSearchParams.tab === 'verify' || resolvedSearchParams.tab === 'users' ? resolvedSearchParams.tab : 'register';
+  const tab = resolvedSearchParams.tab === 'users' ? 'users' : 'verify';
   const selectedStatus = asStatus(resolvedSearchParams.status);
   const selectedChannel = asChannel(resolvedSearchParams.channel);
   const search = (resolvedSearchParams.q || '').trim();
@@ -97,7 +96,7 @@ export default async function OnSpotRegistrationPage({ searchParams }: { searchP
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">On-Spot Registration Console</h1>
-            <p className="text-sm text-gray-600 mt-1">Create on-spot users, verify payments, and manage on-spot participant lifecycle.</p>
+            <p className="text-sm text-gray-600 mt-1">Verify payments and manage the on-spot participant lifecycle.</p>
           </div>
 
         </div>
@@ -131,7 +130,6 @@ export default async function OnSpotRegistrationPage({ searchParams }: { searchP
 
         <div className="flex gap-2">
           {[
-            { key: 'register', label: 'Register' },
             { key: 'verify', label: 'Verify Payments' },
             { key: 'users', label: 'On-Spot Users' },
           ].map((item) => {
@@ -158,79 +156,7 @@ export default async function OnSpotRegistrationPage({ searchParams }: { searchP
           </div>
         )}
 
-        {tab === 'register' && (
-          <div className="bg-white rounded-xl border p-4 sm:p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Create On-Spot Participant</h2>
-            <form
-              action={async (formData) => {
-                'use server';
 
-                const amount = Number(formData.get('amount') || 0);
-                const result = await createOnSpotParticipant({
-                  firstName: String(formData.get('firstName') || ''),
-                  lastName: String(formData.get('lastName') || ''),
-                  email: String(formData.get('email') || ''),
-                  phone: String(formData.get('phone') || ''),
-                  password: String(formData.get('password') || ''),
-                  collegeName: String(formData.get('collegeName') || ''),
-                  collegeLoc: String(formData.get('collegeLoc') || ''),
-                  department: String(formData.get('department') || ''),
-                  yearOfStudy: String(formData.get('yearOfStudy') || ''),
-                  gender: String(formData.get('gender') || 'MALE'),
-                  registrationType: String(formData.get('registrationType') || 'GENERAL'),
-                  amount: Number.isFinite(amount) ? amount : 0,
-                  paymentChannel: String(formData.get('paymentChannel') || 'CASH'),
-                  transactionId: String(formData.get('transactionId') || ''),
-                  proofUrl: String(formData.get('proofUrl') || ''),
-                  stationId: String(formData.get('stationId') || ''),
-                  deviceId: String(formData.get('deviceId') || ''),
-                  referralSource: String(formData.get('referralSource') || ''),
-                  notes: String(formData.get('notes') || ''),
-                });
-
-                const state = result.success
-                  ? 'On-spot user created. Verify payment to activate.'
-                  : (result.error || 'Failed to create on-spot user.');
-                redirect(`/admin/onspot-registration?tab=register&state=${encodeURIComponent(state)}`);
-              }}
-              className="grid grid-cols-1 md:grid-cols-2 gap-4"
-            >
-              <input name="firstName" placeholder="First name" className="border rounded-lg px-3 py-2" required />
-              <input name="lastName" placeholder="Last name" className="border rounded-lg px-3 py-2" required />
-              <input name="email" type="email" placeholder="Email" className="border rounded-lg px-3 py-2" required />
-              <input name="phone" placeholder="Phone" className="border rounded-lg px-3 py-2" required />
-              <input name="password" type="password" placeholder="Set password" className="border rounded-lg px-3 py-2" required />
-              <select name="registrationType" className="border rounded-lg px-3 py-2" defaultValue="GENERAL">
-                <option value="GENERAL">GENERAL</option>
-                <option value="WORKSHOP">WORKSHOP</option>
-                <option value="COMBO">COMBO</option>
-              </select>
-              <select name="gender" className="border rounded-lg px-3 py-2" defaultValue="MALE">
-                <option value="MALE">MALE</option>
-                <option value="FEMALE">FEMALE</option>
-                <option value="OTHER">OTHER</option>
-              </select>
-              <input name="collegeName" placeholder="College" className="border rounded-lg px-3 py-2" required />
-              <input name="collegeLoc" placeholder="College location" className="border rounded-lg px-3 py-2" required />
-              <input name="department" placeholder="Department" className="border rounded-lg px-3 py-2" required />
-              <input name="yearOfStudy" placeholder="Year of study" className="border rounded-lg px-3 py-2" required />
-              <input name="amount" type="number" min="0" placeholder="Amount" className="border rounded-lg px-3 py-2" required />
-              <select name="paymentChannel" className="border rounded-lg px-3 py-2" defaultValue="CASH">
-                <option value="CASH">CASH</option>
-                <option value="ONLINE">ONLINE</option>
-              </select>
-              <input name="transactionId" placeholder="Transaction reference (optional)" className="border rounded-lg px-3 py-2" />
-              <input name="proofUrl" placeholder="Proof URL (optional)" className="border rounded-lg px-3 py-2" />
-              <input name="stationId" placeholder="Station ID (optional)" className="border rounded-lg px-3 py-2" />
-              <input name="deviceId" placeholder="Device ID (optional)" className="border rounded-lg px-3 py-2" />
-              <input name="referralSource" placeholder="How did you hear about us? (optional)" className="border rounded-lg px-3 py-2 md:col-span-2" />
-              <textarea name="notes" placeholder="Notes (optional)" className="border rounded-lg px-3 py-2 md:col-span-2 min-h-20" />
-              <div className="md:col-span-2">
-                <button className="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700">Create on-spot participant</button>
-              </div>
-            </form>
-          </div>
-        )}
 
         {(tab === 'verify' || tab === 'users') && (
           <div className="bg-white rounded-xl border p-4 sm:p-6 space-y-4">

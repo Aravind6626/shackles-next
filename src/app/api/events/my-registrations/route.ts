@@ -56,12 +56,12 @@ export async function GET() {
         };
       });
 
-    // Solo registrations (for "Registered" badge on individual events)
-    const soloEventIds = registrations
+    // Individual registrations (for "Registered" badge on individual events)
+    const individualEventIds = registrations
       .filter(reg => reg.event.participationMode !== 'TEAM')
       .map(reg => reg.eventId);
 
-    return NextResponse.json({ teams, soloEventIds });
+    return NextResponse.json({ teams, individualEventIds });
 
   } catch (error) {
     console.error('[GET /api/events/my-registrations]', error);

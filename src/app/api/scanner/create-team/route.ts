@@ -52,7 +52,7 @@ export async function POST(request: Request) {
     const normalizedCaptainId = normalizeShacklesId(scannedShacklesId);
     const captain = await prisma.user.findUnique({
       where: { shacklesId: normalizedCaptainId },
-      select: { id: true },
+      select: { id: true, email: true, phone: true },
     });
 
     if (!captain) {
@@ -151,6 +151,8 @@ export async function POST(request: Request) {
 
     const session = await getSession();
     const isLocked = lockStatus === "LOCKED";
+    const isFull = totalSize === event.teamMaxSize;
+    const finalStatus = (isLocked || isFull) ? "LOCKED" : "OPEN";
 
     // Transaction: create team and registrations
     const team = await prisma.team.create({
@@ -159,11 +161,13 @@ export async function POST(request: Request) {
         name: teamName,
         nameNormalized: normalizedName,
         teamCode,
-        status: isLocked ? "LOCKED" : "OPEN",
+        status: finalStatus,
         leaderUserId: captain.id,
+        leaderContactEmailSnapshot: captain.email,
+        leaderContactPhoneSnapshot: captain.phone,
         memberCount: totalSize,
-        lockedAt: isLocked ? new Date() : null,
-        lockedBy: isLocked ? String(session?.userId || "") : null,
+        lockedAt: (isLocked || isFull) ? new Date() : null,
+        lockedBy: (isLocked || isFull) ? String(session?.userId || "") : null,
       },
     });
 

@@ -25,7 +25,7 @@ export default async function LiveDashboardPage({
   const params = searchParams ? await searchParams : undefined;
   const selectedEventId = params?.eventId;
 
-  const { events, totalRegistrations, verifiedPayments, kitsIssued, totalAccommodations } =
+  const { events, totalRegistrations } =
     await getCachedDashboardStats();
 
   const leaderboardEvents = await prisma.event.findMany({
@@ -76,22 +76,14 @@ export default async function LiveDashboardPage({
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
           <div className="bg-white rounded-lg shadow-md p-5 border-l-4 border-cyan-500">
             <p className="text-xs uppercase tracking-wide font-semibold text-gray-500">Total Registrations</p>
             <p className="text-3xl font-bold text-gray-900 mt-2">{totalRegistrations}</p>
           </div>
-          <div className="bg-white rounded-lg shadow-md p-5 border-l-4 border-emerald-500">
-            <p className="text-xs uppercase tracking-wide font-semibold text-gray-500">Verified Payments</p>
-            <p className="text-3xl font-bold text-gray-900 mt-2">{verifiedPayments}</p>
-          </div>
           <div className="bg-white rounded-lg shadow-md p-5 border-l-4 border-violet-500">
             <p className="text-xs uppercase tracking-wide font-semibold text-gray-500">Active Events</p>
             <p className="text-3xl font-bold text-gray-900 mt-2">{liveEventCount}</p>
-          </div>
-          <div className="bg-white rounded-lg shadow-md p-5 border-l-4 border-amber-500">
-            <p className="text-xs uppercase tracking-wide font-semibold text-gray-500">Kits Issued</p>
-            <p className="text-3xl font-bold text-gray-900 mt-2">{kitsIssued}</p>
           </div>
         </div>
 
@@ -99,10 +91,6 @@ export default async function LiveDashboardPage({
           <div className="bg-white rounded-lg shadow-md p-6 lg:col-span-1">
             <h2 className="text-lg font-bold text-gray-900 mb-4">Live Event Stats</h2>
             <div className="space-y-4">
-              <div className="rounded-lg bg-gray-50 p-4">
-                <p className="text-sm text-gray-600">Total Accommodations</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{totalAccommodations}</p>
-              </div>
               <div className="rounded-lg bg-gray-50 p-4">
                 <p className="text-sm text-gray-600">Active Registrations</p>
                 <p className="text-2xl font-bold text-gray-900 mt-1">{activeRegistrations}</p>

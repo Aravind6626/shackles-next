@@ -96,7 +96,6 @@ export default function ScannerWidget({ eventId, stationId = "WEB_SCANNER" }: { 
             scanDelay={500}
             constraints={{ facingMode: "environment" }}
             components={{
-              audio: false,
               zoom: true,
               finder: true,
             }}

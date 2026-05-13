@@ -97,7 +97,15 @@ export async function fetchEventMarkingData(eventId: string) {
     } : null;
 
     const teams = await prisma.team.findMany({
-        where: { eventId, status: { in: ['LOCKED', 'OPEN'] } },
+        where: { 
+            eventId, 
+            status: { in: ['LOCKED', 'OPEN'] },
+            members: {
+                some: {
+                    attended: true
+                }
+            }
+        },
         select: { id: true, name: true, memberCount: true },
         orderBy: { nameNormalized: 'asc' }
     })

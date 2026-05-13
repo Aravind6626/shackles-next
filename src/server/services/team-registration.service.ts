@@ -443,12 +443,21 @@ export async function joinTeamByCode(input: {
   });
 
   // Atomic increment with capacity guard — prevents concurrent over-join
+  const shouldLock = team.memberCount + 1 === teamMaxSize;
   const updated = await input.db.team.updateMany({
     where: {
       id: team.id,
       memberCount: { lt: teamMaxSize }, // only increment if still within capacity
     },
-    data: { memberCount: { increment: 1 } },
+    data: { 
+      memberCount: { increment: 1 },
+      ...(shouldLock ? { 
+        status: TeamStatus.LOCKED,
+        lockedAt: new Date(),
+        joinCode: null,
+        joinCodeExpiresAt: null
+      } : {})
+    },
   });
 
   if (updated.count === 0) {
@@ -742,9 +751,18 @@ export async function addMemberToTeamEvent(input: {
     },
   });
 
+  const shouldAutoLock = team.memberCount + 1 === maxTeamSize;
   await input.db.team.update({
     where: { id: team.id },
-    data: { memberCount: { increment: 1 } },
+    data: { 
+      memberCount: { increment: 1 },
+      ...(shouldAutoLock ? { 
+        status: TeamStatus.LOCKED,
+        lockedAt: new Date(),
+        joinCode: null,
+        joinCodeExpiresAt: null
+      } : {})
+    },
   });
 
   return { success: true, message: `Added to team ${team.name} and marked present.` };
@@ -1022,8 +1040,10 @@ export async function bulkRegisterTeamByShacklesIds(input: {
     memberCount: finalMemberCount,
   };
 
-  if (shouldLockTeam) {
-    if (finalMemberCount < teamMinSize) {
+  const mustLock = shouldLockTeam || finalMemberCount === teamMaxSize;
+
+  if (mustLock) {
+    if (shouldLockTeam && finalMemberCount < teamMinSize) {
       return {
         success: false,
         reason: "TEAM_BELOW_MIN_SIZE",
@@ -1037,7 +1057,7 @@ export async function bulkRegisterTeamByShacklesIds(input: {
     teamData.joinCodeExpiresAt = null;
   }
 
-  if (shouldLockTeam) {
+  if (mustLock) {
     const res = await input.db.team.updateMany({
       where: { id: team.id, status: { in: [TeamStatus.OPEN, TeamStatus.DRAFT] } },
       data: teamData,
@@ -1049,7 +1069,7 @@ export async function bulkRegisterTeamByShacklesIds(input: {
     await input.db.team.update({ where: { id: team.id }, data: teamData });
   }
 
-  if (!shouldLockTeam) {
+  if (!mustLock) {
     return {
       success: true,
       message: `Team ${team.name} updated with ${finalMemberCount} members.`,

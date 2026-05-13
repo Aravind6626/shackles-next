@@ -54,9 +54,23 @@ export const authConfig: NextAuthConfig = {
         return true;
       }
 
-      // API admin routes require ADMIN role
+      // API admin routes
       if (pathname.startsWith("/api/admin")) {
         if (!isLoggedIn) return false;
+
+        // Coordinators and Volunteers need access to specific admin APIs
+        if (
+          pathname.startsWith("/api/admin/marking") || 
+          pathname.startsWith("/api/admin/scanner") ||
+          pathname.startsWith("/api/admin/event-registrations")
+        ) {
+          return (
+            auth.user?.role === "ADMIN" ||
+            auth.user?.role === "COORDINATOR" ||
+            auth.user?.role === "VOLUNTEER"
+          );
+        }
+
         return auth.user?.role === "ADMIN";
       }
 
@@ -69,8 +83,12 @@ export const authConfig: NextAuthConfig = {
       if (pathname.startsWith("/admin")) {
         if (!isLoggedIn) return false;
 
-        // Coordinators and Volunteers need access to specific admin routes like marking or scanner
-        if (pathname.startsWith("/admin/marking") || pathname.startsWith("/admin/scanner")) {
+        // Coordinators and Volunteers need access to specific admin routes like marking, scanner, or event registrations
+        if (
+          pathname.startsWith("/admin/marking") || 
+          pathname.startsWith("/admin/scanner") ||
+          pathname.startsWith("/admin/event-registrations")
+        ) {
           return (
             auth.user?.role === "ADMIN" ||
             auth.user?.role === "COORDINATOR" ||

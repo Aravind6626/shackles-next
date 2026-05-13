@@ -10,10 +10,10 @@ export default async function AdminEventRegistrationsPage({ searchParams }: { se
   const session = await getSession();
   if (!session?.userId) redirect("/login");
   const user = await prisma.user.findUnique({ where: { id: session.userId as string } });
-  if (!user || (user.role !== "ADMIN" && user.role !== "COORDINATOR")) redirect("/login");
+  if (!user || (user.role !== "ADMIN" && user.role !== "VOLUNTEER" && user.role !== "COORDINATOR")) redirect("/login");
 
   let allowedEventIds: string[] | null = null;
-  if (user.role === "COORDINATOR") {
+  if (user.role !== "ADMIN") {
     // Only fetch events assigned to this coordinator
     const assignments = await prisma.eventStaffAssignment.findMany({
       where: {
@@ -162,12 +162,14 @@ export default async function AdminEventRegistrationsPage({ searchParams }: { se
               >
                 Apply
               </button>
-              <a
-                href="/admin/events"
-                className="px-4 py-2 rounded-lg text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50"
-              >
-                View all events
-              </a>
+              {user.role === 'ADMIN' && (
+                <a
+                  href="/admin/events"
+                  className="px-4 py-2 rounded-lg text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
+                  View all events
+                </a>
+              )}
             </div>
           </form>
           <div className="mt-3 flex flex-wrap gap-2">

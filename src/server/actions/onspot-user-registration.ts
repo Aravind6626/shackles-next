@@ -7,6 +7,7 @@ import { revalidatePath } from 'next/cache';
 import { PaymentStatus, RegistrationType, Role, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { getActiveYear } from '@/lib/edition';
 
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_REQUESTS_PER_WINDOW = 5;
@@ -167,6 +168,7 @@ export async function registerOnSpotParticipant(input: unknown) {
               status: PaymentStatus.PENDING,
               paymentChannel: data.paymentChannel,
               captureSource: 'ON_SPOT',
+              year: getActiveYear()
             },
           },
         },

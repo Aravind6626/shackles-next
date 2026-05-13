@@ -4,6 +4,7 @@ import { z } from "zod";
 import { hash } from "bcryptjs";
 import { BCRYPT_ROUNDS } from "@/lib/crypto-config";
 import { prisma } from "@/lib/prisma";
+import { getActiveYear } from "@/lib/edition";
 import { createRateLimiter, rateLimitPresets } from "@/lib/rate-limit";
 
 const registrationRateLimiter = createRateLimiter({
@@ -94,7 +95,8 @@ export async function registerFullUser(data: unknown) {
             transactionId,
             proofUrl: proofUrl || "",
             proofPath,
-            status: "PENDING"
+            status: "PENDING",
+            year: getActiveYear()
           }
         }
       }

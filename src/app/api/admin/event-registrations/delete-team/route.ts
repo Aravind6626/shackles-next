@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   const baseUrl = request.headers.get("origin") || process.env.NEXT_PUBLIC_APP_URL || request.url;
 
   if (!eventId) {
-    return Response.redirect(new URL("/admin/event-registrations?error=missing-fields", baseUrl), 303);
+    return Response.redirect(new URL("/admin/event-registrations?error=missing-fields", request.url), 303);
   }
 
   const { allowed, session } = await checkCanManageRegistrations(eventId);
@@ -44,12 +44,12 @@ export async function POST(request: Request) {
   }
 
   if (!teamId) {
-    return Response.redirect(new URL(`/admin/event-registrations/${eventId}?error=missing-team`, baseUrl), 303);
+    return Response.redirect(new URL(`/admin/event-registrations/${eventId}?error=missing-team`, request.url), 303);
   }
 
   const existingTeam = await prisma.team.findUnique({ where: { id: teamId }, select: { id: true } });
   if (!existingTeam) {
-    return Response.redirect(new URL("/admin/event-registrations?error=team-not-found", baseUrl), 303);
+    return Response.redirect(new URL("/admin/event-registrations?error=team-not-found", request.url), 303);
   }
 
   await prisma.$transaction(async (tx) => {
@@ -68,5 +68,5 @@ export async function POST(request: Request) {
     ? `/admin/event-registrations/${formData.get("eventId")}?success=team-deleted`
     : "/admin/event-registrations?success=team-deleted";
 
-  return Response.redirect(new URL(redirectUrl, baseUrl), 303);
+  return Response.redirect(new URL(redirectUrl, request.url), 303);
 }

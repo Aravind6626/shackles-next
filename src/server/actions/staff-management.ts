@@ -12,18 +12,18 @@ import { logAdminAudit } from '@/lib/admin-audit'
 const CreateStaffUserSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
-  firstName: z.string().min(2, 'First name required'),
-  lastName: z.string().min(2, 'Last name required'),
+  firstName: z.string().min(1, 'First name required'),
+  lastName: z.string().min(1, 'Last name required'),
   phone: z.string().min(10, 'Valid phone number required'),
   role: z.enum(['COORDINATOR', 'VOLUNTEER'], {
-    errorMap: () => ({ message: 'Role must be COORDINATOR or VOLUNTEER' }),
+    message: 'Role must be COORDINATOR or VOLUNTEER',
   }),
 })
 
 const AssignStaffToEventSchema = z.object({
   userId: z.string().cuid('Invalid user ID'),
   eventId: z.string().cuid('Invalid event ID'),
-  staffRole: z.enum(['COORDINATOR', 'VOLUNTEER']),
+  staffRole: z.enum(['COORDINATOR', 'VOLUNTEER']).optional(),
 })
 
 const RemoveStaffFromEventSchema = z.object({
@@ -129,7 +129,7 @@ export async function assignStaffToEvent(input: z.infer<typeof AssignStaffToEven
       }
     }
 
-    const { userId, eventId, staffRole } = result.data
+    const { userId, eventId, staffRole: providedRole } = result.data
 
     // Verify user exists and is staff
     const user = await prisma.user.findUnique({
@@ -144,6 +144,9 @@ export async function assignStaffToEvent(input: z.infer<typeof AssignStaffToEven
     if (user.role !== 'COORDINATOR' && user.role !== 'VOLUNTEER') {
       return { success: false, error: 'User is not a staff member' }
     }
+
+    // Use user's primary role if not explicitly provided (derived from database)
+    const staffRole = providedRole || (user.role as unknown as StaffRole)
 
     // Verify event exists
     const event = await prisma.event.findUnique({
@@ -160,12 +163,11 @@ export async function assignStaffToEvent(input: z.infer<typeof AssignStaffToEven
       where: {
         userId,
         eventId,
-        staffRole,
       },
     })
 
     if (existing) {
-      return { success: false, error: 'Staff already assigned to this event with this role' }
+      return { success: false, error: 'Staff already assigned to this event' }
     }
 
     // Create assignment
@@ -191,7 +193,10 @@ export async function assignStaffToEvent(input: z.infer<typeof AssignStaffToEven
 
     return {
       success: true,
-      data: assignment,
+      data: {
+        ...assignment,
+        eventName: event.name,
+      },
       message: `${user.email} assigned to ${event.name} as ${staffRole}`,
     }
   } catch (error) {

@@ -16,7 +16,7 @@ interface Event {
   date?: string | null;
   endDate?: string | null;
   rulesUrl?: string | null;
-  participationMode: 'SOLO' | 'TEAM' | 'INDIVIDUAL';
+  participationMode: 'TEAM' | 'INDIVIDUAL';
   teamMinSize?: number | null;
   teamMaxSize?: number | null;
   trainerName?: string | null;
@@ -154,7 +154,7 @@ export default function EventCategoryPage({
 
   // My registrations
   const [myTeamsByEventId, setMyTeamsByEventId] = useState<Record<string, MyTeamEntry>>({});
-  const [soloEventIds, setSoloEventIds] = useState<string[]>([]);
+  const [individualEventIds, setIndividualEventIds] = useState<string[]>([]);
 
   // Invite modal
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -172,7 +172,7 @@ export default function EventCategoryPage({
         map[t.eventId] = t;
       });
       setMyTeamsByEventId(map);
-      setSoloEventIds(data.soloEventIds ?? []);
+      setIndividualEventIds(data.individualEventIds ?? []);
     } catch {
       // silently ignore — user may not be logged in
     }
@@ -357,7 +357,7 @@ export default function EventCategoryPage({
   }
 
   function isRegistered(eventId: string): boolean {
-    return !!myTeamsByEventId[eventId] || soloEventIds.includes(eventId);
+    return !!myTeamsByEventId[eventId] || individualEventIds.includes(eventId);
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -413,7 +413,7 @@ export default function EventCategoryPage({
                   {/* Mode badge */}
                   <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${accent.badge}`}>
                     {team ? <Users size={12} /> : <User size={12} />}
-                    {team ? 'Team' : 'Solo'}
+                    {team ? 'Team' : 'Individual'}
                   </span>
 
                   {/* Date badge */}
@@ -468,7 +468,7 @@ export default function EventCategoryPage({
                   <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${accent.badge}`}>
                     {isTeamEvent(selectedEvent.participationMode)
                       ? <><Users size={12} /> Team Event</>
-                      : <><User size={12} /> Solo Event</>
+                      : <><User size={12} /> Individual Event</>
                     }
                   </span>
                   {(selectedEvent.date || selectedEvent.endDate) && (
@@ -648,9 +648,9 @@ export default function EventCategoryPage({
                     )}
                   </div>
                 ) : (
-                  // ── Solo Registration ──
+                  // ── Individual Registration ──
                   <div>
-                    {soloEventIds.includes(selectedEvent.id) ? (
+                    {individualEventIds.includes(selectedEvent.id) ? (
                       <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3">
                         <p className="text-sm font-semibold text-green-700">✓ Registered for this event</p>
                       </div>

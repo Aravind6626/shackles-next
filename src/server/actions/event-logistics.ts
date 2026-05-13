@@ -14,6 +14,7 @@ import {
   parseUniqueShacklesIds,
 } from "@/server/services/team-registration.service";
 import { runSerializableTransaction } from "@/server/services/transaction.service";
+import { decodeQrPayload } from "@/server/services/qr.service";
 
 // --- 1. SCAN LOGIC (For Volunteers) ---
 // Input: Scanned QR Token string
@@ -25,8 +26,21 @@ export async function scanParticipantQR(token: string) {
   }
 
   try {
+    // 1. Decode the structured QR payload
+    let userQrToken: string;
+    try {
+      const decoded = decodeQrPayload(token);
+      if (decoded.type !== 'USER') {
+        return { success: false, error: "Invalid QR type. Must be a user QR." };
+      }
+      userQrToken = decoded.uid;
+    } catch (e) {
+      // Fallback for direct token lookup if payload is not structured
+      userQrToken = token;
+    }
+
     const user = await prisma.user.findUnique({
-      where: { qrToken: token },
+      where: { qrToken: userQrToken },
       include: {
         registrations: {
           include: { event: true }
@@ -131,6 +145,20 @@ export async function updateKitStatus(userId: string) {
     return { success: true, message: "Kit Issued Successfully" };
   } catch {
     return { success: false, error: "Failed to update kit status" };
+  }
+}
+
+export async function getKitsIssuedCount() {
+  try {
+    const count = await prisma.user.count({
+      where: {
+        kitStatus: 'ISSUED'
+      }
+    });
+    return { success: true, count };
+  } catch (error) {
+    console.error("Error fetching kit count:", error);
+    return { success: false, count: 0 };
   }
 }
 

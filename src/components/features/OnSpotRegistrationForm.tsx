@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { registerOnSpotParticipant } from '@/server/actions/onspot-user-registration';
 import { compressImage } from '@/lib/compress-image';
 import { onspotRegistrationSchema, type OnspotRegistrationData } from '@/lib/schemas/onspot-registration-schema';
+import Autocomplete from '@/components/ui/Autocomplete';
 
 type PaymentUploadResponse = {
   proofUrl?: string;
@@ -15,6 +16,8 @@ type PaymentUploadResponse = {
 };
 
 const YEARS = ['I', 'II', 'III', 'IV'] as const;
+const COLLEGES = ["ACGCET", "PSG Tech", "CIT", "GCE Salem", "Anna University"];
+const DEPARTMENTS = ["Mechanical", "CSE", "ECE", "EEE", "Civil"];
 const PASS_TYPES = [
   { id: 'GENERAL', label: 'General', price: 500 },
   { id: 'WORKSHOP', label: 'Workshop', price: 300 },
@@ -111,6 +114,10 @@ export default function OnSpotRegistrationForm() {
     setValue('amount', selected.price, { shouldValidate: true });
   };
 
+  const handleAutocompleteChange = (name: string, value: string) => {
+    setValue(name as any, value, { shouldValidate: true });
+  };
+
   const onValidSubmit = async (data: OnspotRegistrationData) => {
     setLoading(true);
     setError('');
@@ -165,7 +172,13 @@ export default function OnSpotRegistrationForm() {
           {errors.phone && <p className="mt-1 text-xs text-red-500">{errors.phone.message}</p>}
         </div>
         <div>
-          <input {...register('collegeName')} placeholder="College name" className="input-field" />
+          <Autocomplete
+            name="collegeName"
+            value={watch('collegeName')}
+            onChange={handleAutocompleteChange}
+            suggestions={COLLEGES}
+            placeholder="College Name"
+          />
           {errors.collegeName && <p className="mt-1 text-xs text-red-500">{errors.collegeName.message}</p>}
         </div>
         <div>
@@ -173,7 +186,13 @@ export default function OnSpotRegistrationForm() {
           {errors.collegeLoc && <p className="mt-1 text-xs text-red-500">{errors.collegeLoc.message}</p>}
         </div>
         <div>
-          <input {...register('department')} placeholder="Department" className="input-field" />
+          <Autocomplete
+            name="department"
+            value={watch('department')}
+            onChange={handleAutocompleteChange}
+            suggestions={DEPARTMENTS}
+            placeholder="Department"
+          />
           {errors.department && <p className="mt-1 text-xs text-red-500">{errors.department.message}</p>}
         </div>
         <div>

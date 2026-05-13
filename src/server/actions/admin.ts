@@ -152,6 +152,7 @@ export async function verifyUserPayment(userId: string, action: 'APPROVE' | 'REJ
               data: {
                 status: 'VERIFIED',
                 verifiedAt: new Date(),
+                year: activeYear, // Ensure year is recorded for current edition
               },
             });
 
