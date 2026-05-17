@@ -71,6 +71,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      init-db:
+        condition: service_completed_successfully
 
   # Main Next.js Application
   app:
@@ -100,6 +102,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      init-db:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:
