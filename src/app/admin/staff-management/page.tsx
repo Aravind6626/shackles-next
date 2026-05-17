@@ -34,6 +34,8 @@ export default function StaffManagementPage() {
     eventId: '',
   })
 
+  const [confirmRemove, setConfirmRemove] = useState<{ userId: string; eventId: string } | null>(null)
+
   // Load data
   useEffect(() => {
     async function loadData() {
@@ -118,8 +120,8 @@ export default function StaffManagementPage() {
         if (res.success) setStaffUsers(res.data.staff || [])
 
         // Redirection logic for Kit Distribution
-        const data = result.data as { eventName?: string }
-        if (data.eventName === 'KIT DISTRIBUTION') {
+        const data = result.data as { isKitEvent?: boolean }
+        if (data.isKitEvent) {
           window.location.href = '/staff/volunteerDashboard'
         }
       } else {
@@ -135,7 +137,12 @@ export default function StaffManagementPage() {
 
   // Remove assignment handler
   async function handleRemoveAssignment(userId: string, eventId: string) {
-    if (!confirm('Remove staff from event?')) return
+    if (!confirmRemove || confirmRemove.userId !== userId || confirmRemove.eventId !== eventId) {
+      setConfirmRemove({ userId, eventId })
+      setTimeout(() => setConfirmRemove(null), 3000) // reset after 3s
+      return
+    }
+    setConfirmRemove(null)
 
     try {
       const result = await removeStaffFromEvent({ userId, eventId })
@@ -255,7 +262,7 @@ export default function StaffManagementPage() {
                                   onClick={() => handleRemoveAssignment(staff.id, assignment.eventId)}
                                   className="text-red-600 hover:text-red-800 text-xs"
                                 >
-                                  Remove
+                                  {confirmRemove?.userId === staff.id && confirmRemove?.eventId === assignment.eventId ? 'Sure?' : 'Remove'}
                                 </button>
                               </div>
                             ))

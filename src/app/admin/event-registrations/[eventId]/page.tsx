@@ -54,7 +54,7 @@ export default async function EventRegistrationDetailPage({
     if (!event) redirect('/admin/event-registrations');
 
     const totalRegistrations = event.registrations.reduce(
-        (sum, reg) => sum + (reg.teamId ? 1 : reg.teamSize || 1),
+        (sum, reg) => sum + (reg.teamId ? reg.teamSize || 1 : 1),
         0
     );
     const attended = event.registrations.filter((r) => r.attended).length;

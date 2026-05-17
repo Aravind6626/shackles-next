@@ -169,6 +169,7 @@ export async function assignStaffToEvent(input: z.infer<typeof AssignStaffToEven
         ...assignment,
         eventName: event.name,
       },
+      isKitEvent: event.name === 'KIT DISTRIBUTION',
       message: `${user.email} assigned to ${event.name} as ${staffRole}`,
     }
   })

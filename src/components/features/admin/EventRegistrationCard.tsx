@@ -33,7 +33,7 @@ const TYPE_STYLES: Record<string, string> = {
 
 export default function EventRegistrationCard({ event }: { event: EventWithRegistrations }) {
   const totalRegistrations = event.registrations.reduce(
-    (sum, reg) => sum + (reg.teamId ? 1 : reg.teamSize || 1), 0
+    (sum, reg) => sum + (reg.teamId ? reg.teamSize || 1 : 1), 0
   );
   const attended = event.registrations.filter((r) => r.attended).length;
   const attendancePercent = totalRegistrations > 0

@@ -99,7 +99,7 @@ export default async function AdminEventRegistrationsPage({ searchParams }: { se
   const totals = filtered.reduce(
     (acc, evt) => {
       acc.registrations += evt.registrations.reduce(
-        (sum, reg) => sum + (reg.teamId ? 1 : reg.teamSize || 1),
+        (sum, reg) => sum + (reg.teamId ? reg.teamSize || 1 : 1),
         0
       );
       acc.events += 1;
