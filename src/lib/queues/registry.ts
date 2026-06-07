@@ -1,5 +1,5 @@
 import { Queue, QueueOptions } from "bullmq";
-import { redisConnection } from "@/lib/redis";
+import { valkeyConnection } from "@/lib/valkey";
 
 // --- Types ---
 
@@ -32,7 +32,7 @@ export const QUEUE_NAMES = {
 } as const;
 
 const defaultOptions: QueueOptions = {
-  connection: redisConnection,
+  connection: valkeyConnection,
   defaultJobOptions: {
     attempts: 3,
     backoff: {

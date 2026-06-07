@@ -1,5 +1,5 @@
 /**
- * Rate limiting implementation with in-memory fallback and Redis support
+ * Rate limiting implementation with in-memory fallback and Valkey/Redis support
  * For production, ensure UPSTASH_REDIS_REST_URL is set for distributed rate limiting
  */
 
@@ -53,19 +53,19 @@ class InMemoryRateLimiter {
 
 /**
  * Factory function to create a rate limiter
- * Uses Upstash Redis in production if configured, otherwise in-memory
+ * Uses Upstash Redis (Valkey-compatible) in production if configured, otherwise in-memory
  */
 export function createRateLimiter(
   config: {
     windowMs: number; // Time window in milliseconds
     maxRequests: number; // Max requests per window
-    keyPrefix?: string; // Key prefix for Redis
-    redisCacheKey?: string; // Redis cache key (optional, for distributed rate limiting)
+    keyPrefix?: string; // Key prefix for Valkey/Redis
+    redisCacheKey?: string; // Cache key (optional, for distributed rate limiting)
   }
 ) {
   const { windowMs, maxRequests, keyPrefix = "ratelimit", redisCacheKey } = config;
 
-  // Try to use Redis if configured
+  // Try to use Valkey/Redis if configured
   if (
     process.env.UPSTASH_REDIS_REST_URL &&
     process.env.UPSTASH_REDIS_REST_TOKEN
@@ -83,7 +83,7 @@ export function createRateLimiter(
         analytics: true,
       });
     } catch (error) {
-      console.warn("[Rate Limit] Failed to initialize Redis, falling back to in-memory:", error);
+      console.warn("[Rate Limit] Failed to initialize Valkey/Redis, falling back to in-memory:", error);
     }
   }
 

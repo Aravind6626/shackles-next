@@ -33,10 +33,10 @@ This project is built using a modern **TypeScript** full-stack ecosystem, optimi
 ### 3. Database & Data Access
 - **Primary Database**: [PostgreSQL 15](https://www.postgresql.org/) handles relational data integrity (Users, Teams, Events, Marks).
 - **ORM**: [Prisma](https://www.prisma.io/) provides a strongly typed database client and schema migrations.
-- **Caching & Rate Limiting**: [Redis](https://redis.io/) (via Upstash Redis) is used for distributed rate-limiting to protect endpoints (e.g., registrations, invites) and for queue management.
+- **Caching & Rate Limiting**: [Valkey](https://valkey.io/) (Redis-compatible) is used for distributed rate-limiting to protect endpoints (e.g., registrations, invites) and for queue management.
 
 ### 4. Background Jobs & Asynchronous Processing
-- **Queue System**: [BullMQ](https://docs.bullmq.io/) is used for reliable, Redis-backed job queues.
+- **Queue System**: [BullMQ](https://docs.bullmq.io/) is used for reliable, Valkey-backed job queues.
 - **Background Workers**: A dedicated Node.js worker process (`qr.worker.ts`, etc.) handles heavy, asynchronous tasks like:
   - QR Code Generation
   - CSV Exports
@@ -71,7 +71,7 @@ This project is built using a modern **TypeScript** full-stack ecosystem, optimi
 
 ### Prerequisites
 - Node.js `20.x`
-- Docker & Docker Compose (for local DB/Redis)
+- Docker & Docker Compose (for local DB/Valkey)
 - Git
 
 ### 1. Environment Setup
@@ -84,9 +84,9 @@ cp .env.example .env.local
 *Open `.env.local` and configure your settings. The defaults are set up to work with the local Docker containers.*
 
 ### 2. Start Infrastructure
-Spin up the local PostgreSQL database and Redis instance using Docker Compose:
+Spin up the local PostgreSQL database and Valkey instance using Docker Compose:
 ```bash
-docker-compose up -d db redis
+docker-compose up -d db valkey
 ```
 
 ### 3. Database Initialization & Seeding
@@ -139,7 +139,7 @@ The deployment architecture consists of two primary Docker containers:
 ### DigitalOcean App Platform
 This project is configured for continuous deployment to the DigitalOcean App Platform. 
 
-To provision the infrastructure (App, Worker, Postgres DB, and Redis), authenticate with the DigitalOcean CLI (`doctl`) and run:
+To provision the infrastructure (App, Worker, Postgres DB, and Valkey), authenticate with the DigitalOcean CLI (`doctl`) and run:
 ```bash
 doctl apps create --spec app.yaml
 ```

@@ -41,13 +41,13 @@ This application is containerized and designed for deployment on any VPS (Digita
 - **App (`shackles-app`)**: Next.js production server (Standalone mode).
 - **Worker (`shackles-worker`)**: Background job processor for heavy tasks (QR generation, CSV exports).
 - **Database (`shackles-local-db`)**: PostgreSQL 16.
-- **Cache (`shackles-local-redis`)**: Redis 7 for BullMQ and rate-limiting.
+- **Cache (`shackles-local-valkey`)**: Valkey 8 for BullMQ and rate-limiting.
 
 ## 🔑 Key Configuration
 | Variable | Description |
 |----------|-------------|
 | `DATABASE_URL` | Connection string for Postgres. In Docker, use `postgresql://postgres:password@db:5432/shackles_local`. |
-| `REDIS_URL` | Connection string for Redis. In Docker, use `redis://redis:6379`. |
+| `VALKEY_URL` | Connection string for Valkey. In Docker, use `redis://valkey:6379`. |
 | `NEXTAUTH_URL` | The public URL of your app (e.g., `https://shackles.yourdomain.com`). |
 | `STORAGE_PROVIDER` | Set to `spaces` for DigitalOcean or `local` for container storage. |
 

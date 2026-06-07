@@ -18,7 +18,7 @@ const LoginSchema = z.object({
 
 export async function loginUser(prevState: unknown, formData: FormData) {
   const data = Object.fromEntries(formData.entries());
-  let loggedInRole: string | null = null;
+  const loggedInRole: string | null = null;
 
   const result = LoginSchema.safeParse(data);
   if (!result.success) {

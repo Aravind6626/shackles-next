@@ -61,7 +61,7 @@ export async function scanParticipantQR(token: string) {
       role: user.role,
       kitStatus: user.kitStatus,
       registrationType: user.registrationType,
-      events: user.registrations.map(r => ({
+      events: user.registrations.map((r: any) => ({
         eventName: r.event.name,
         attended: r.attended,
         teamName: r.teamName,
@@ -98,7 +98,7 @@ export async function scanParticipantByShacklesId(shacklesId: string) {
       role: user.role,
       kitStatus: user.kitStatus,
       registrationType: user.registrationType,
-      events: user.registrations.map(r => ({
+      events: user.registrations.map((r: any) => ({
         eventName: r.event.name,
         attended: r.attended,
         teamName: r.teamName,
@@ -196,7 +196,7 @@ export async function quickRegisterForEvent(userId: string, eventName: string) {
   return executeSafeAction({ permission: Permission.ONSPOT_INDIVIDUAL_REG }, async (session) => {
     const activeYear = getActiveYear();
 
-    return await prisma.$transaction(async (tx) => {
+    return await prisma.$transaction(async (tx: any) => {
       const user = await tx.user.findUnique({
         where: { id: userId },
         include: { payment: true },
@@ -332,7 +332,7 @@ export async function getScannerJoinableTeams(input: {
 
     const maxTeamSize = event.teamMaxSize ?? 4;
 
-    return teams.map((team) => ({
+    return teams.map((team: any) => ({
       id: team.id,
       name: team.name,
       teamCode: team.teamCode,
@@ -453,6 +453,11 @@ export async function validateTeamRegistration(input: {
   leaderShacklesId?: string;
   operationId?: string;
 }) {
+  const session = await getSession();
+  if (!session?.userId || (session.role !== 'ADMIN' && session.role !== 'STAFF' && session.role !== 'COORDINATOR')) {
+    return { success: false, reason: "UNAUTHORIZED", error: "Unauthorized access" };
+  }
+
   if (!isScannerBulkTeamFlowEnabled()) {
     return {
       success: false,
@@ -464,7 +469,7 @@ export async function validateTeamRegistration(input: {
   let validationResult: Awaited<ReturnType<typeof bulkRegisterTeamByShacklesIds>> | null = null;
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       validationResult = await bulkRegisterTeamByShacklesIds({
         db: tx,
         eventName: input.eventName,
@@ -519,6 +524,11 @@ export async function scannerBulkRegisterTeam(input: {
   lockTeam?: boolean;
   operationId?: string;
 }) {
+  const session = await getSession();
+  if (!session?.userId || (session.role !== 'ADMIN' && session.role !== 'STAFF' && session.role !== 'COORDINATOR')) {
+    return { success: false, reason: "UNAUTHORIZED", error: "Unauthorized access" };
+  }
+
   try {
     if (!isScannerBulkTeamFlowEnabled()) {
       await logScannerBulkAudit({
@@ -684,7 +694,7 @@ export async function registerCurrentUserForEvent(eventName: string) {
       where: { eventId: event.id },
       select: { teamId: true, teamSize: true },
     });
-    const participantCount = participants.reduce((sum, registration) => {
+    const participantCount = participants.reduce((sum: any, registration: any) => {
       return sum + (registration.teamId ? 1 : registration.teamSize || 1);
     }, 0);
 
@@ -750,7 +760,7 @@ export async function changeTeamLeader(input: {
 
   if (!team) return { success: false, error: "Team not found." };
 
-  const isMember = team.members.some((m) => m.userId === newLeaderUserId);
+  const isMember = team.members.some((m: any) => m.userId === newLeaderUserId);
   if (!isMember) return { success: false, error: "Selected user is not a member of this team." };
 
   if (team.leaderUserId === newLeaderUserId) {
@@ -814,7 +824,7 @@ export async function deleteTeamMember(input: {
 
   if (!registration) return { success: false, error: "Registration not found." };
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx: any) => {
     await tx.eventRegistration.delete({ where: { id: registration.id } });
 
     if (!registration.teamId) return;
@@ -831,7 +841,7 @@ export async function deleteTeamMember(input: {
     }
 
     const nextLeader =
-      remaining.find((item) => item.memberRole === TeamMemberRole.LEADER)?.userId || remaining[0].userId;
+      remaining.find((item: any) => item.memberRole === TeamMemberRole.LEADER)?.userId || remaining[0].userId;
 
     await tx.eventRegistration.updateMany({
       where: { teamId: registration.teamId },
@@ -901,7 +911,7 @@ export async function deleteTeam(input: {
   const existingTeam = await prisma.team.findUnique({ where: { id: teamId }, select: { id: true } });
   if (!existingTeam) return { success: false, error: "Team not found." };
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx: any) => {
     await tx.eventRegistration.deleteMany({ where: { teamId } });
     await tx.team.delete({ where: { id: teamId } });
   });
@@ -925,7 +935,7 @@ export async function processQRScanAction(input: {
   stationId: string;
   eventId?: string;
   operationType: string;
-}): Promise<{ success: boolean; error?: string; [key: string]: unknown }> {
+}): Promise<any> {
   const { qrData, stationId, eventId, operationType } = input;
 
   if (!qrData || !stationId || !operationType) {
@@ -1119,7 +1129,7 @@ export async function scannerCreateTeam(input: {
     });
 
     if (members.length !== normalizedMemberIds.length) {
-      const foundIds = new Set(members.map((m) => m.shacklesId));
+      const foundIds = new Set(members.map((m: any) => m.shacklesId));
       const missingIds = normalizedMemberIds.filter((id) => !foundIds.has(id));
       return { success: false, error: `Members not found: ${missingIds.join(", ")}` };
     }
@@ -1132,7 +1142,7 @@ export async function scannerCreateTeam(input: {
       return { success: false, error: `Team size ${totalSize} exceeds maximum ${event.teamMaxSize}` };
     }
 
-    const memberIds = members.map((m) => m.id);
+    const memberIds = members.map((m: any) => m.id);
     if (memberIds.includes(captain.id)) {
       return { success: false, error: "Captain cannot be in team members list" };
     }
@@ -1159,7 +1169,7 @@ export async function scannerCreateTeam(input: {
     const isFull = totalSize === event.teamMaxSize;
     const finalStatus = (isLocked || isFull) ? "LOCKED" : "OPEN";
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: any) => {
       const existingTeamName = await tx.team.findUnique({
         where: { eventId_nameNormalized: { eventId, nameNormalized: normalizedName } },
       });
@@ -1211,7 +1221,7 @@ export async function scannerCreateTeam(input: {
     });
 
     return result;
-  } catch (error) {
+  } catch (error: any) {
     if (error.code === "P2002") {
       return { success: false, error: "A team with this name already exists" };
     }

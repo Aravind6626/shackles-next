@@ -60,12 +60,12 @@ async function createVerifiedUser(index: number) {
 
 describe("integration: team registration stress", () => {
   afterAll(async () => {
-    try { await prisma.registrationOperation.deleteMany({ where: { operationId: { startsWith: `${runTag}-` } } }); } catch (e) {}
-    try { await prisma.eventRegistration.deleteMany({ where: { stationId: { contains: runTag } } }); } catch (e) {}
-    try { await prisma.team.deleteMany({ where: { name: { contains: runTag } } }); } catch (e) {}
-    try { await prisma.event.deleteMany({ where: { name: { contains: runTag } } }); } catch (e) {}
-    try { await prisma.payment.deleteMany({ where: { transactionId: { contains: runTag } } }); } catch (e) {}
-    try { await prisma.user.deleteMany({ where: { email: { contains: runTag } } }); } catch (e) {}
+    try { await prisma.registrationOperation.deleteMany({ where: { operationId: { startsWith: `${runTag}-` } } }); } catch (_e) {}
+    try { await prisma.eventRegistration.deleteMany({ where: { stationId: { contains: runTag } } }); } catch (_e) {}
+    try { await prisma.team.deleteMany({ where: { name: { contains: runTag } } }); } catch (_e) {}
+    try { await prisma.event.deleteMany({ where: { name: { contains: runTag } } }); } catch (_e) {}
+    try { await prisma.payment.deleteMany({ where: { transactionId: { contains: runTag } } }); } catch (_e) {}
+    try { await prisma.user.deleteMany({ where: { email: { contains: runTag } } }); } catch (_e) {}
   });
 
   it("enforces single-winner lock semantics over repeated parallel TEAM_COMPLETE attempts", async () => {

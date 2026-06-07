@@ -1,5 +1,5 @@
 import { Worker, Job } from "bullmq";
-import { redisConnection } from "@/lib/redis";
+import { valkeyConnection } from "@/lib/valkey";
 import { QUEUE_NAMES, QRJobData } from "@/lib/queues/registry";
 import { prisma } from "@/lib/prisma";
 import QRCode from "qrcode";
@@ -106,7 +106,7 @@ export const qrWorker = new Worker(
   QUEUE_NAMES.QR_GENERATION,
   processQRGeneration,
   {
-    connection: redisConnection,
+    connection: valkeyConnection,
     concurrency: 5,
   }
 );

@@ -6,6 +6,7 @@ import { getSession } from '@/lib/session'
 import { Permission, Role } from '@prisma/client'
 import { z } from 'zod'
 import { broadcastLeaderboardUpdate } from '@/lib/leaderboard-broadcast'
+import { valkeyConnection } from '@/lib/valkey'
 
 // Validation schemas
 const CreateMarkingCriteriaSchema = z.object({
@@ -348,6 +349,10 @@ export async function getLeaderboard(eventId: string) {
 
 export async function fetchCriteriaForCoordinator(eventId: string) {
   if (!eventId) return { success: false, error: 'eventId required' }
+  const session = await getSession();
+  if (!session?.userId || (session.role !== Role.ADMIN && session.role !== Role.COORDINATOR)) {
+    return { success: false, error: 'Unauthorized to access marking criteria' }
+  }
 
   try {
     const criteria = await prisma.markingCriteria.findUnique({
@@ -402,6 +407,10 @@ const SubmitJudgeMarksSchema = z.object({
 })
 
 export async function submitJudgeMarks(input: z.infer<typeof SubmitJudgeMarksSchema>) {
+  const session = await getSession();
+  if (!session?.userId || (session.role !== Role.ADMIN && session.role !== Role.COORDINATOR)) {
+    return { success: false, error: 'Unauthorized to submit marks' }
+  }
   let validated: z.infer<typeof SubmitJudgeMarksSchema>
   try {
     validated = SubmitJudgeMarksSchema.parse(input)
@@ -596,6 +605,10 @@ export async function submitJudgeMarks(input: z.infer<typeof SubmitJudgeMarksSch
 export async function getTeamMarks(input: { eventId: string; teamId: string }) {
   const { eventId, teamId } = input
   if (!eventId || !teamId) return { success: false, error: 'eventId and teamId required' }
+  const session = await getSession();
+  if (!session?.userId || (session.role !== Role.ADMIN && session.role !== Role.COORDINATOR)) {
+    return { success: false, error: 'Unauthorized to view team marks' }
+  }
 
   try {
     const team = await prisma.team.findFirst({
@@ -655,6 +668,20 @@ export async function getTeamMarks(input: { eventId: string; teamId: string }) {
 
 export async function getLeaderboardData(eventId: string) {
   if (!eventId) return { success: false, error: 'eventId required' }
+  const session = await getSession();
+  if (!session?.userId || (session.role !== Role.ADMIN && session.role !== Role.COORDINATOR)) {
+    return { success: false, error: 'Unauthorized to view leaderboard' }
+  }
+
+  const cacheKey = `leaderboard:${eventId}`;
+  try {
+    const cachedData = await valkeyConnection.get(cacheKey);
+    if (cachedData) {
+      return { success: true, leaderboard: JSON.parse(cachedData) };
+    }
+  } catch (err) {
+    console.error('Valkey cache read error:', err);
+  }
 
   try {
     const criteria = await prisma.markingCriteria.findUnique({
@@ -694,20 +721,28 @@ export async function getLeaderboardData(eventId: string) {
       })),
     }))
 
+    const resultPayload = {
+      eventId,
+      criteriaName: criteria.name,
+      maxMarks: criteria.maxMarks,
+      numberOfJudges: criteria.numberOfJudges,
+      components: criteria.components.map(c => ({
+        ...c,
+        weightPercentage: Number(c.weightPercentage),
+      })),
+      teams: leaderboard,
+      totalTeamsSubmitted: leaderboard.length,
+    };
+
+    try {
+      await valkeyConnection.setex(cacheKey, 30, JSON.stringify(resultPayload));
+    } catch (err) {
+      console.error('Valkey cache write error:', err);
+    }
+
     return {
       success: true,
-      leaderboard: {
-        eventId,
-        criteriaName: criteria.name,
-        maxMarks: criteria.maxMarks,
-        numberOfJudges: criteria.numberOfJudges,
-        components: criteria.components.map(c => ({
-          ...c,
-          weightPercentage: Number(c.weightPercentage),
-        })),
-        teams: leaderboard,
-        totalTeamsSubmitted: leaderboard.length,
-      },
+      leaderboard: resultPayload,
     }
   } catch (error) {
     console.error('getLeaderboardData error:', error)

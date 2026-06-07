@@ -1,6 +1,7 @@
 import { Permission, Role } from "@prisma/client";
 import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
+import * as Sentry from "@sentry/nextjs";
 
 /**
  * Result of a safe action execution.
@@ -53,6 +54,19 @@ export async function executeSafeAction<T>(
 
   } catch (error: any) {
     console.error("Safe Action Error:", error);
+    
+    // Asynchronously capture exception in Sentry so we don't block the request
+    const session = await getSession();
+    Sentry.captureException(error, {
+      tags: {
+        userId: session?.userId || "anonymous",
+        userRole: session?.role || "unknown",
+      },
+      extra: {
+        permission: metadata.permission,
+        requiredRoles: metadata.roles,
+      }
+    });
     
     // Handle known error types or provide a generic error
     const errorMessage = error instanceof Error ? error.message : "An unexpected system error occurred";

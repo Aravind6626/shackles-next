@@ -144,10 +144,10 @@ APPLICANT → PARTICIPANT → VOLUNTEER → COORDINATOR → ADMIN
 | Component | Technology | Details |
 |-----------|-----------|---------|
 | **Rate Limiter** | [@upstash/ratelimit](https://upstash.com/) | `^2.0.8` |
-| **Redis Client** | [@upstash/redis](https://upstash.com/) | `^1.37.0` |
-| **Local Redis** | [Redis](https://redis.io/) `7-alpine` | Docker Compose (dev) |
+| **Upstash Client** | [@upstash/redis](https://upstash.com/) (Valkey-compatible) | `^1.37.0` |
+| **Local Cache** | [Valkey](https://valkey.io/) `8-alpine` | Docker Compose (dev) |
 
-- Production: Upstash Redis (serverless)
+- Production: Upstash (Valkey/Redis-compatible, serverless)
 - Development: falls back to in-memory rate limiting
 - Server-side caching via `src/lib/cached-queries.ts`
 
@@ -220,7 +220,7 @@ APPLICANT → PARTICIPANT → VOLUNTEER → COORDINATOR → ADMIN
 | **Hosting** | [DigitalOcean App Platform](https://www.digitalocean.com/products/app-platform) | Container-based |
 | **Container Registry** | [DigitalOcean Container Registry](https://www.digitalocean.com/products/container-registry) | — |
 | **Object Storage** | DigitalOcean Spaces (S3-compatible) | CDN-enabled |
-| **Local Dev** | Docker Compose | PostgreSQL 15 + Redis 7 |
+| **Local Dev** | Docker Compose | PostgreSQL 16 + Valkey 8 |
 
 ### Docker Build
 
@@ -243,7 +243,7 @@ Stage 3 (runner)  → Standalone server (non-root user)
 - **Referrer-Policy:** `strict-origin-when-cross-origin`
 - **Permissions-Policy:** camera self-only, no mic/geo
 - **RBAC** with role + permission model
-- **Rate limiting** on API routes (Upstash Redis / in-memory fallback)
+- **Rate limiting** on API routes (Upstash Valkey-compatible / in-memory fallback)
 - **Environment validation** via `src/lib/env-validation.ts`
 - Non-root Docker user (`nextjs:nodejs`)
 
@@ -286,6 +286,6 @@ shackles_symposium/
 ├── tests/                   # Vitest unit + Playwright E2E tests
 ├── storage/                 # Local file storage (dev)
 ├── Dockerfile               # Multi-stage production build
-├── docker-compose.yml       # Local dev services (Postgres + Redis)
+├── docker-compose.yml       # Local dev services (Postgres + Valkey)
 └── package.json
 ```

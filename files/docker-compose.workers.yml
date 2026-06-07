@@ -3,16 +3,16 @@
 
 services:
 
-  redis:
-    image: redis:7-alpine
+  valkey:
+    image: valkey/valkey:8-alpine
     restart: unless-stopped
-    command: redis-server --appendonly yes   # persist job data across restarts
+    command: valkey-server --appendonly yes   # persist job data across restarts
     volumes:
-      - redis_data:/data
+      - valkey_data:/data
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -24,7 +24,7 @@ services:
     command: node dist/worker.js      # runs worker.ts compiled output
     restart: unless-stopped
     environment:
-      - REDIS_URL=redis://redis:6379
+      - VALKEY_URL=redis://valkey:6379
       - DATABASE_URL=${DATABASE_URL}
       - DO_SPACES_ENDPOINT=${DO_SPACES_ENDPOINT}
       - DO_SPACES_KEY=${DO_SPACES_KEY}
@@ -34,17 +34,17 @@ services:
       - QR_ENCRYPTION_KEY=${QR_ENCRYPTION_KEY}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
     depends_on:
-      redis:
+      valkey:
         condition: service_healthy
     deploy:
       resources:
         limits:
           memory: 1G    # Puppeteer (ID cards) is memory-hungry
 
-  # Your existing Next.js service — add REDIS_URL
+  # Your existing Next.js service — add VALKEY_URL
   app:
     environment:
-      - REDIS_URL=redis://redis:6379  # add this line to existing env block
+      - VALKEY_URL=redis://valkey:6379  # add this line to existing env block
 
 volumes:
-  redis_data:
+  valkey_data:

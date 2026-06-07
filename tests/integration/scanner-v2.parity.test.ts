@@ -175,10 +175,10 @@ describe("integration: scanner-v2 parity coverage", () => {
       });
       expect(quickReg?.attended).toBe(true);
     } finally {
-      try { await prisma.eventRegistration.deleteMany({ where: { event: { name: { in: [attendanceEventName, quickEventName] } } } }); } catch (e) {}
-      try { await prisma.event.deleteMany({ where: { name: { in: [attendanceEventName, quickEventName] } } }); } catch (e) {}
-      try { await prisma.payment.deleteMany({ where: { transactionId: { contains: tag } } }); } catch (e) {}
-      try { await prisma.user.deleteMany({ where: { email: { contains: tag } } }); } catch (e) {}
+      try { await prisma.eventRegistration.deleteMany({ where: { event: { name: { in: [attendanceEventName, quickEventName] } } } }); } catch (_e) {}
+      try { await prisma.event.deleteMany({ where: { name: { in: [attendanceEventName, quickEventName] } } }); } catch (_e) {}
+      try { await prisma.payment.deleteMany({ where: { transactionId: { contains: tag } } }); } catch (_e) {}
+      try { await prisma.user.deleteMany({ where: { email: { contains: tag } } }); } catch (_e) {}
       if (previousActiveYear) {
         process.env.ACTIVE_YEAR = previousActiveYear;
       } else {
@@ -257,12 +257,12 @@ describe("integration: scanner-v2 parity coverage", () => {
       expect(team?.status).toBe(TeamStatus.LOCKED);
       expect(team?.memberCount).toBe(2);
     } finally {
-      try { await prisma.eventRegistration.deleteMany({ where: { stationId: { startsWith: "SCANNER:" } } }); } catch (e) {}
-      try { await prisma.eventRegistration.deleteMany({ where: { event: { name: { startsWith: "SCANNER-TEAM-" } } } }); } catch (e) {}
-      try { await prisma.team.deleteMany({ where: { name: { startsWith: "T-SCAN-" } } }); } catch (e) {}
-      try { await prisma.event.deleteMany({ where: { name: { startsWith: "SCANNER-TEAM-" } } }); } catch (e) {}
-      try { await prisma.payment.deleteMany({ where: { transactionId: { contains: tag } } }); } catch (e) {}
-      try { await prisma.user.deleteMany({ where: { email: { contains: tag } } }); } catch (e) {}
+      try { await prisma.eventRegistration.deleteMany({ where: { stationId: { startsWith: "SCANNER:" } } }); } catch (_e) {}
+      try { await prisma.eventRegistration.deleteMany({ where: { event: { name: { startsWith: "SCANNER-TEAM-" } } } }); } catch (_e) {}
+      try { await prisma.team.deleteMany({ where: { name: { startsWith: "T-SCAN-" } } }); } catch (_e) {}
+      try { await prisma.event.deleteMany({ where: { name: { startsWith: "SCANNER-TEAM-" } } }); } catch (_e) {}
+      try { await prisma.payment.deleteMany({ where: { transactionId: { contains: tag } } }); } catch (_e) {}
+      try { await prisma.user.deleteMany({ where: { email: { contains: tag } } }); } catch (_e) {}
       if (previousActiveYear) {
         process.env.ACTIVE_YEAR = previousActiveYear;
       } else {
@@ -368,12 +368,12 @@ describe("integration: scanner-v2 parity coverage", () => {
       });
       expect(team?.status).toBe(TeamStatus.LOCKED);
     } finally {
-      try { await prisma.eventRegistration.deleteMany({ where: { stationId: { startsWith: "SCANNER:" } } }); } catch (e) {}
-      try { await prisma.eventRegistration.deleteMany({ where: { event: { name: { startsWith: "SCANNER-BULK-" } } } }); } catch (e) {}
-      try { await prisma.team.deleteMany({ where: { name: { startsWith: "T-BULK-" } } }); } catch (e) {}
-      try { await prisma.event.deleteMany({ where: { name: { startsWith: "SCANNER-BULK-" } } }); } catch (e) {}
-      try { await prisma.payment.deleteMany({ where: { transactionId: { contains: tag } } }); } catch (e) {}
-      try { await prisma.user.deleteMany({ where: { email: { contains: tag } } }); } catch (e) {}
+      try { await prisma.eventRegistration.deleteMany({ where: { stationId: { startsWith: "SCANNER:" } } }); } catch (_e) {}
+      try { await prisma.eventRegistration.deleteMany({ where: { event: { name: { startsWith: "SCANNER-BULK-" } } } }); } catch (_e) {}
+      try { await prisma.team.deleteMany({ where: { name: { startsWith: "T-BULK-" } } }); } catch (_e) {}
+      try { await prisma.event.deleteMany({ where: { name: { startsWith: "SCANNER-BULK-" } } }); } catch (_e) {}
+      try { await prisma.payment.deleteMany({ where: { transactionId: { contains: tag } } }); } catch (_e) {}
+      try { await prisma.user.deleteMany({ where: { email: { contains: tag } } }); } catch (_e) {}
       if (previousActiveYear) {
         process.env.ACTIVE_YEAR = previousActiveYear;
       } else {

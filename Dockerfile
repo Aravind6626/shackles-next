@@ -21,7 +21,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 
 # Copy config files first (rarely change → better layer caching)
-COPY package.json package-lock.json tsconfig.json next.config.mjs postcss.config.mjs .npmrc ./
+COPY package.json package-lock.json tsconfig.json next.config.mjs postcss.config.mjs .npmrc sentry.*.config.ts ./
 
 # Prisma schema + migrations (changes less often than src)
 COPY prisma ./prisma

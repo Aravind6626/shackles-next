@@ -5,7 +5,7 @@
  * and any load-balancer health-check that expects an HTTP 200.
  *
  * Returns 200 when the DB is reachable, 503 otherwise.
- * Also checks Redis connectivity when configured.
+ * Also checks Valkey connectivity when configured.
  * The response body is structured JSON so dashboards can parse it.
  */
 import { NextResponse } from "next/server";
@@ -28,29 +28,29 @@ export async function GET() {
     dbMessage = err instanceof Error ? err.message : "unknown error";
   }
 
-  // --- Redis check ---
-  let redisStatus: "ok" | "error" | "not_configured" = "not_configured";
-  let redisMessage: string | undefined;
+  // --- Valkey check ---
+  let valkeyStatus: "ok" | "error" | "not_configured" = "not_configured";
+  let valkeyMessage: string | undefined;
 
   try {
-    // Dynamic import to avoid crashing if Redis module is not available
-    const redisModule = await import("@/lib/redis");
-    const redis = redisModule.getRedis ? redisModule.getRedis() : (redisModule.redisConnection || null);
+    // Dynamic import to avoid crashing if Valkey module is not available
+    const valkeyModule = await import("@/lib/valkey");
+    const valkey = valkeyModule.getValkey ? valkeyModule.getValkey() : (valkeyModule.valkeyConnection || null);
 
-    if (redis && typeof redis.ping === "function") {
-      await redis.ping();
-      redisStatus = "ok";
+    if (valkey && typeof valkey.ping === "function") {
+      await valkey.ping();
+      valkeyStatus = "ok";
     } else {
-      redisStatus = "not_configured";
-      redisMessage = "Redis client not available";
+      valkeyStatus = "not_configured";
+      valkeyMessage = "Valkey client not available";
     }
   } catch (err) {
-    redisStatus = "error";
-    redisMessage = err instanceof Error ? err.message : "unknown error";
+    valkeyStatus = "error";
+    valkeyMessage = err instanceof Error ? err.message : "unknown error";
   }
 
   const latencyMs = Date.now() - start;
-  const isHealthy = dbStatus === "ok" && redisStatus !== "error";
+  const isHealthy = dbStatus === "ok" && valkeyStatus !== "error";
   const httpStatus = isHealthy ? 200 : 503;
 
   return NextResponse.json(
@@ -61,9 +61,9 @@ export async function GET() {
           status: dbStatus,
           ...(dbMessage ? { message: dbMessage } : {}),
         },
-        redis: {
-          status: redisStatus,
-          ...(redisMessage ? { message: redisMessage } : {}),
+        valkey: {
+          status: valkeyStatus,
+          ...(valkeyMessage ? { message: valkeyMessage } : {}),
         },
       },
       latencyMs,

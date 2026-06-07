@@ -33,10 +33,10 @@ vi.mock("@/lib/rate-limit", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     user: {
-      findUnique: (args: any) => findUniqueMock("user", args),
+      findUnique: (args: unknown) => findUniqueMock("user", args),
     },
     team: {
-      findUnique: (args: any) => findUniqueMock("team", args),
+      findUnique: (args: unknown) => findUniqueMock("team", args),
     },
     $transaction: transactionMock,
   },

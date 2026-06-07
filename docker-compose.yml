@@ -7,18 +7,60 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-      POSTGRES_DB: ${POSTGRES_DB:-shackles_local}
-    ports:
-      - "5433:5432"  # Local development port mapping
+      POSTGRES_DB: ${POSTGRES_DB:-shackles_symposium}
+    # In production, do NOT expose this port externally — only pgbouncer should
+    # be reachable by the app. Uncomment below for local debugging only.
+    # ports:
+    #   - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Tuned for a VPS with 4–8 GB RAM serving 500+ concurrent users
+    command: >
+      postgres
+        -c max_connections=300
+        -c shared_buffers=1GB
+        -c effective_cache_size=3GB
+        -c work_mem=16MB
+        -c maintenance_work_mem=256MB
+        -c wal_buffers=16MB
+        -c checkpoint_completion_target=0.9
+        -c random_page_cost=1.1
+        -c log_min_duration_statement=500
+        -c log_statement=none
+
+  # PgBouncer — connection pooler (sits between app ↔ Postgres)
+  # With 500+ concurrent users, Prisma can open many connections quickly.
+  # PgBouncer pools them so Postgres only sees a manageable number.
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: shackles-pgbouncer
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-shackles_symposium}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 80
+      MIN_POOL_SIZE: 20
+      RESERVE_POOL_SIZE: 20
+      RESERVE_POOL_TIMEOUT: 3
+      SERVER_IDLE_TIMEOUT: 300
+      SERVER_LIFETIME: 3600
+      AUTH_TYPE: scram-sha-256
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 5432"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Run Prisma migrations automatically
+  # Run Prisma migrations (one-time init — uses DIRECT connection, not pooler)
   init-db:
     image: node:20-alpine
     container_name: shackles-init-db
@@ -26,29 +68,37 @@ services:
     volumes:
       - .:/app
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-shackles_local}
+      # Migrations MUST use direct connection (not PgBouncer)
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-shackles_symposium}
+      - DIRECT_DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-shackles_symposium}
     depends_on:
       db:
         condition: service_healthy
-    command: sh -c "npm install && npx prisma migrate dev --name init"
+    command: sh -c "apk add --no-cache openssl && npm install && npx prisma migrate deploy"
 
-  # Redis cache for rate limiting and caching
-  redis:
-    image: redis:7-alpine
-    container_name: shackles-local-redis
+  # Valkey — Redis-compatible in-memory store for BullMQ workers and rate limiting
+  # Valkey is a Linux Foundation fork of Redis with full wire-protocol compatibility.
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: shackles-local-valkey
     restart: always
-    command: redis-server --appendonly yes
-    ports:
-      - "6379:6379"
+    command: >
+      valkey-server
+        --appendonly yes
+        --maxmemory 128mb
+        --maxmemory-policy allkeys-lru
+    # Do NOT expose in production — only accessible within Docker network
+    # ports:
+    #   - "6379:6379"
     volumes:
-      - redis_data:/data
+      - valkey_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Background job workers
+  # Background job workers (CSV exports, QR generation, etc.)
   worker:
     build:
       context: .
@@ -56,19 +106,23 @@ services:
     container_name: shackles-worker
     restart: always
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-shackles_local}
-      - DIRECT_DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-shackles_local}
-      - REDIS_URL=redis://redis:6379
-      - ACTIVE_YEAR=2026
-      - STORAGE_PROVIDER=local
+      # Worker uses PgBouncer for runtime queries
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@pgbouncer:5432/${POSTGRES_DB:-shackles_symposium}?pgbouncer=true
+      - DIRECT_DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-shackles_symposium}
+      - VALKEY_URL=redis://valkey:6379
+      - ACTIVE_YEAR=${ACTIVE_YEAR:-2026}
+      - STORAGE_PROVIDER=${STORAGE_PROVIDER:-local}
       - DO_SPACES_KEY=${DO_SPACES_KEY}
       - DO_SPACES_SECRET=${DO_SPACES_SECRET}
       - DO_SPACES_ENDPOINT=${DO_SPACES_ENDPOINT}
       - DO_SPACES_BUCKET=${DO_SPACES_BUCKET}
+      - DO_SPACES_CDN_BASE_URL=${DO_SPACES_CDN_BASE_URL}
     depends_on:
       db:
         condition: service_healthy
-      redis:
+      pgbouncer:
+        condition: service_healthy
+      valkey:
         condition: service_healthy
       init-db:
         condition: service_completed_successfully
@@ -83,27 +137,53 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-shackles_local}
-      - DIRECT_DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-shackles_local}
-      - REDIS_URL=redis://redis:6379
+      # App uses PgBouncer for runtime queries (pooled)
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@pgbouncer:5432/${POSTGRES_DB:-shackles_symposium}?pgbouncer=true
+      # Direct connection for any ad-hoc migrations or introspection
+      - DIRECT_DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-shackles_symposium}
+      - VALKEY_URL=redis://valkey:6379
       - NODE_ENV=production
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
       - SESSION_SECRET=${SESSION_SECRET}
-      - ACTIVE_YEAR=2026
-      - STORAGE_PROVIDER=local
+      - AUTH_SECRET=${AUTH_SECRET}
+      - ACTIVE_YEAR=${ACTIVE_YEAR:-2026}
+      - ACTIVE_THEME_KEY=${ACTIVE_THEME_KEY:-default}
+      - ACTIVE_PUBLIC_DOMAIN=${ACTIVE_PUBLIC_DOMAIN}
+      - STORAGE_PROVIDER=${STORAGE_PROVIDER:-local}
       - DO_SPACES_KEY=${DO_SPACES_KEY}
       - DO_SPACES_SECRET=${DO_SPACES_SECRET}
       - DO_SPACES_ENDPOINT=${DO_SPACES_ENDPOINT}
       - DO_SPACES_BUCKET=${DO_SPACES_BUCKET}
+      - DO_SPACES_REGION=${DO_SPACES_REGION}
+      - DO_SPACES_CDN_BASE_URL=${DO_SPACES_CDN_BASE_URL}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-resend}
+      - EMAIL_FROM=${EMAIL_FROM}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_SECURE=${SMTP_SECURE}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - SMTP_FROM=${SMTP_FROM}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ENABLE_SCANNER_BULK_TEAM_FLOW=${ENABLE_SCANNER_BULK_TEAM_FLOW:-false}
+      - NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - SENTRY_ORG=${SENTRY_ORG}
+      - SENTRY_PROJECT=${SENTRY_PROJECT}
     depends_on:
       db:
         condition: service_healthy
-      redis:
+      pgbouncer:
+        condition: service_healthy
+      valkey:
         condition: service_healthy
       init-db:
         condition: service_completed_successfully
 
 volumes:
   postgres_data:
-  redis_data:
+  valkey_data:

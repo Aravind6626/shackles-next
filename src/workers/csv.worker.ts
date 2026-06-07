@@ -1,5 +1,5 @@
 import { Worker, Job } from "bullmq";
-import { redisConnection } from "@/lib/redis";
+import { valkeyConnection } from "@/lib/valkey";
 import { QUEUE_NAMES, CSVExportJobData } from "@/lib/queues/registry";
 import { prisma } from "@/lib/prisma";
 import { uploadToSpaces } from "@/lib/digitalocean/spaces";
@@ -90,7 +90,7 @@ export const csvWorker = new Worker(
   QUEUE_NAMES.CSV_EXPORT,
   exportCSV,
   {
-    connection: redisConnection,
+    connection: valkeyConnection,
     concurrency: 1,
   }
 );

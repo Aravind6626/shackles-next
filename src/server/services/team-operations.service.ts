@@ -436,7 +436,7 @@ export interface LockTeamResult {
  * Lock a team (prevent new members from joining, finalize member count)
  */
 export async function lockTeam(input: LockTeamInput): Promise<LockTeamResult> {
-  const activeYear = getActiveYear();
+  
 
   try {
     // 1. Fetch team and related data

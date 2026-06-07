@@ -4,14 +4,14 @@
 
 | File | Purpose |
 |------|---------|
-| `lib/redis.ts` | Shared ioredis connection (required by BullMQ) |
+| `lib/valkey.ts` | Shared ioredis connection to Valkey (required by BullMQ) |
 | `lib/queues/registry.ts` | Queue definitions + job payload types |
 | `workers/qr.worker.ts` | QR code generation → upload to DO Spaces |
 | `workers/csv.worker.ts` | Participant CSV export → email download link |
 | `workers/idCard.worker.ts` | ID card generation via Puppeteer → DO Spaces |
 | `worker.ts` | Worker process entrypoint (separate from Next.js) |
 | `app/actions/jobs.ts` | Server Actions to enqueue jobs + poll status |
-| `docker-compose.workers.yml` | Redis + worker service to merge into your compose |
+| `docker-compose.workers.yml` | Valkey + worker service to merge into your compose |
 
 ---
 
@@ -26,7 +26,7 @@ Server Action                    qr.worker.ts
   enqueueIDCardGeneration()
          │
          ▼
-      Redis (BullMQ)
+      Valkey (BullMQ)
          ▲
          │ getJobStatus() polls for progress
          │
@@ -50,7 +50,7 @@ npm install -D @types/qrcode
 ## Environment variables to add
 
 ```env
-REDIS_URL=redis://localhost:6379
+VALKEY_URL=redis://localhost:6379
 QR_ENCRYPTION_KEY=<32-byte hex string>   # openssl rand -hex 32
 DO_SPACES_CDN_URL=https://your-bucket.sgp1.cdn.digitaloceanspaces.com
 ```
@@ -66,7 +66,7 @@ All three queues share this policy (set in `registry.ts`):
 | 1st retry | 2s |
 | 2nd retry | 4s |
 | 3rd retry | 8s |
-| After 3 failures | Job marked `failed`, kept in Redis for 500 jobs |
+| After 3 failures | Job marked `failed`, kept in Valkey for 500 jobs |
 
 Failed jobs are visible in Bull Board (see below) and can be manually retried.
 
@@ -146,4 +146,4 @@ If you ever need more throughput:
 - **QR generation**: increase `concurrency` in `qr.worker.ts` (it's I/O bound)
 - **CSV exports**: add a second worker process (BullMQ handles distribution)
 - **ID cards**: add more memory to the worker container; Puppeteer is the bottleneck
-- **Multi-replica**: Redis pub/sub already handles job distribution — no code changes needed
+- **Multi-replica**: Valkey pub/sub already handles job distribution — no code changes needed

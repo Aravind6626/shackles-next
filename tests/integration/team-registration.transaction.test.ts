@@ -124,11 +124,11 @@ describe("integration: team registration transaction behavior", () => {
       expect(team?.status).toBe("LOCKED");
       expect(team?.memberCount).toBe(shacklesIds.length);
     } finally {
-      try { await prisma.eventRegistration.deleteMany({ where: { OR: [{ stationId: "phase4-int-a" }, { stationId: "phase4-int-b" }] } }); } catch (e) {}
-      try { await prisma.team.deleteMany({ where: { name: { startsWith: "TEAM" } } }); } catch (e) {}
-      try { await prisma.event.deleteMany({ where: { name: { startsWith: "EVENT" } } }); } catch (e) {}
-      try { await prisma.payment.deleteMany({ where: { transactionId: { startsWith: "int-tx-phase4-int-" } } }); } catch (e) {}
-      try { await prisma.user.deleteMany({ where: { email: { startsWith: "int.phase4-int-" } } }); } catch (e) {}
+      try { await prisma.eventRegistration.deleteMany({ where: { OR: [{ stationId: "phase4-int-a" }, { stationId: "phase4-int-b" }] } }); } catch (_e) {}
+      try { await prisma.team.deleteMany({ where: { name: { startsWith: "TEAM" } } }); } catch (_e) {}
+      try { await prisma.event.deleteMany({ where: { name: { startsWith: "EVENT" } } }); } catch (_e) {}
+      try { await prisma.payment.deleteMany({ where: { transactionId: { startsWith: "int-tx-phase4-int-" } } }); } catch (_e) {}
+      try { await prisma.user.deleteMany({ where: { email: { startsWith: "int.phase4-int-" } } }); } catch (_e) {}
     }
   }, 90000);
 
@@ -198,11 +198,11 @@ describe("integration: team registration transaction behavior", () => {
       expect(team?.status).toBe("OPEN");
       expect(team?.memberCount).toBe(shacklesIds.length);
     } finally {
-      try { await prisma.eventRegistration.deleteMany({ where: { stationId: "phase4-draft" } }); } catch (e) {}
-      try { await prisma.team.deleteMany({ where: { name: { startsWith: "TDRAFT" } } }); } catch (e) {}
-      try { await prisma.event.deleteMany({ where: { name: { startsWith: "EDRAFT" } } }); } catch (e) {}
-      try { await prisma.payment.deleteMany({ where: { transactionId: { startsWith: "int-tx-phase4-draft-" } } }); } catch (e) {}
-      try { await prisma.user.deleteMany({ where: { email: { startsWith: "int.phase4-draft-" } } }); } catch (e) {}
+      try { await prisma.eventRegistration.deleteMany({ where: { stationId: "phase4-draft" } }); } catch (_e) {}
+      try { await prisma.team.deleteMany({ where: { name: { startsWith: "TDRAFT" } } }); } catch (_e) {}
+      try { await prisma.event.deleteMany({ where: { name: { startsWith: "EDRAFT" } } }); } catch (_e) {}
+      try { await prisma.payment.deleteMany({ where: { transactionId: { startsWith: "int-tx-phase4-draft-" } } }); } catch (_e) {}
+      try { await prisma.user.deleteMany({ where: { email: { startsWith: "int.phase4-draft-" } } }); } catch (_e) {}
     }
   }, 30000);
 
@@ -255,11 +255,11 @@ describe("integration: team registration transaction behavior", () => {
       const teams = await prisma.team.findMany({ where: { eventId: event.id } });
       expect(teams).toHaveLength(0);
     } finally {
-      try { await prisma.eventRegistration.deleteMany({ where: { stationId: "phase4-unknown" } }); } catch (e) {}
-      try { await prisma.team.deleteMany({ where: { name: { startsWith: "TUNK" } } }); } catch (e) {}
-      try { await prisma.event.deleteMany({ where: { name: { startsWith: "EUNK" } } }); } catch (e) {}
-      try { await prisma.payment.deleteMany({ where: { transactionId: { startsWith: "int-tx-phase4-unknown-" } } }); } catch (e) {}
-      try { await prisma.user.deleteMany({ where: { email: { startsWith: "int.phase4-unknown-" } } }); } catch (e) {}
+      try { await prisma.eventRegistration.deleteMany({ where: { stationId: "phase4-unknown" } }); } catch (_e) {}
+      try { await prisma.team.deleteMany({ where: { name: { startsWith: "TUNK" } } }); } catch (_e) {}
+      try { await prisma.event.deleteMany({ where: { name: { startsWith: "EUNK" } } }); } catch (_e) {}
+      try { await prisma.payment.deleteMany({ where: { transactionId: { startsWith: "int-tx-phase4-unknown-" } } }); } catch (_e) {}
+      try { await prisma.user.deleteMany({ where: { email: { startsWith: "int.phase4-unknown-" } } }); } catch (_e) {}
     }
   }, 30000);
 
@@ -320,11 +320,11 @@ describe("integration: team registration transaction behavior", () => {
 
       expect(team?.status).toBe("OPEN");
     } finally {
-      try { await prisma.eventRegistration.deleteMany({ where: { stationId: "phase4-min-lock" } }); } catch (e) {}
-      try { await prisma.team.deleteMany({ where: { name: { startsWith: "TMIN" } } }); } catch (e) {}
-      try { await prisma.event.deleteMany({ where: { name: { startsWith: "EMIN" } } }); } catch (e) {}
-      try { await prisma.payment.deleteMany({ where: { transactionId: { startsWith: "int-tx-phase4-min-lock-" } } }); } catch (e) {}
-      try { await prisma.user.deleteMany({ where: { email: { startsWith: "int.phase4-min-lock-" } } }); } catch (e) {}
+      try { await prisma.eventRegistration.deleteMany({ where: { stationId: "phase4-min-lock" } }); } catch (_e) {}
+      try { await prisma.team.deleteMany({ where: { name: { startsWith: "TMIN" } } }); } catch (_e) {}
+      try { await prisma.event.deleteMany({ where: { name: { startsWith: "EMIN" } } }); } catch (_e) {}
+      try { await prisma.payment.deleteMany({ where: { transactionId: { startsWith: "int-tx-phase4-min-lock-" } } }); } catch (_e) {}
+      try { await prisma.user.deleteMany({ where: { email: { startsWith: "int.phase4-min-lock-" } } }); } catch (_e) {}
     }
   }, 30000);
 });

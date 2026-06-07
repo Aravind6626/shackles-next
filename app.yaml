@@ -20,9 +20,9 @@ services:
       - key: DIRECT_DATABASE_URL
         scope: RUN_TIME
         value: ${db.DATABASE_URL}
-      - key: REDIS_URL
+      - key: VALKEY_URL
         scope: RUN_TIME
-        value: ${redis.REDIS_URL}
+        value: ${valkey.REDIS_URL}
       # Required Secrets (To be configured in DO App Dashboard)
       - key: NEXTAUTH_SECRET
         scope: RUN_TIME
@@ -54,9 +54,9 @@ services:
       - key: DIRECT_DATABASE_URL
         scope: RUN_TIME
         value: ${db.DATABASE_URL}
-      - key: REDIS_URL
+      - key: VALKEY_URL
         scope: RUN_TIME
-        value: ${redis.REDIS_URL}
+        value: ${valkey.REDIS_URL}
       - key: STORAGE_PROVIDER
         scope: RUN_TIME
         value: digitalocean
@@ -88,8 +88,8 @@ databases:
     version: "15"
     size: db-s-dev-database
     num_nodes: 1
-  - name: redis
-    engine: REDIS
-    version: "7"
-    size: db-s-dev-redis
+  - name: valkey
+    engine: VALKEY
+    version: "8"
+    size: db-s-dev-database
     num_nodes: 1

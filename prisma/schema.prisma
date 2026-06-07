@@ -1,6 +1,6 @@
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+  binaryTargets = ["native", "linux-musl"]
 }
 
 datasource db {
@@ -259,6 +259,7 @@ model EventRegistration {
   @@unique([userId, eventId])
   @@index([year, eventId])
   @@index([eventId, source])
+  @@index([eventId, teamId])
 }
 
 model RegistrationOperation {
