@@ -927,6 +927,58 @@ export async function deleteTeam(input: {
 }
 
 // ---------------------------------------------------------------------------
+// Admin: Lock Entire Team
+// ---------------------------------------------------------------------------
+
+const lockTeamRateLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  maxRequests: 20,
+  keyPrefix: "action:admin:lock-team",
+});
+
+export async function lockTeamByAdmin(input: {
+  teamId: string;
+  eventId: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { teamId, eventId } = input;
+
+  if (!eventId) return { success: false, error: "Event ID is required." };
+  if (!teamId) return { success: false, error: "Team ID is required." };
+
+  const { allowed, session } = await checkCanManageRegistrations(eventId);
+  if (!allowed || !session) {
+    return { success: false, error: "Unauthorized." };
+  }
+
+  const rl = await lockTeamRateLimiter.limit(`admin:lock-team:${session.userId}`);
+  if (!rl.success) {
+    return { success: false, error: "Too many attempts. Please try again later." };
+  }
+
+  const { lockTeam } = await import("@/server/services/team-operations.service");
+
+  const result = await lockTeam({
+    teamId,
+    lockedBy: session.userId,
+    db: prisma,
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error || "Failed to lock team." };
+  }
+
+  revalidatePath("/admin/event-registrations", "layout");
+  revalidatePath(`/admin/event-registrations/${eventId}`);
+  revalidatePath("/admin/events");
+  revalidatePath("/admin/adminDashboard");
+  revalidatePath("/userDashboard");
+  revalidatePath("/events");
+  revalidatePath("/workshops");
+
+  return { success: true };
+}
+
+// ---------------------------------------------------------------------------
 // Scanner: Process QR Scan (migrated from api/scanner/qr-scan)
 // ---------------------------------------------------------------------------
 

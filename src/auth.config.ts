@@ -67,7 +67,8 @@ export const authConfig: NextAuthConfig = {
         const isRestrictedStaffPath = 
           pathname.includes("/marking") || 
           pathname.includes("/scanner") || 
-          pathname.includes("/event-registrations");
+          pathname.includes("/event-registrations") ||
+          pathname.includes("/paper-submissions");
 
         if (isRestrictedStaffPath) {
           // Both Volunteers and Coordinators can access these specific modules

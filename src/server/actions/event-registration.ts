@@ -10,6 +10,7 @@ import { sendTeamInviteEmail } from '@/lib/email'
 import { getActiveYear } from '@/lib/edition'
 import { normalizeTeamName, validateTeamName, generateUniqueJoinCode } from '@/server/services/team-registration.service'
 import { sendTeamCreatedEmail } from '@/server/services/email.service'
+import { lockTeam } from '@/server/services/team-operations.service'
 
 function normalizeName(name: string) {
   return name.trim().toUpperCase()
@@ -317,10 +318,8 @@ export async function joinTeamViaCode(input: { eventName: string; teamCode?: str
         },
       })
 
-      await tx.team.update({
-        where: { id: team.id },
-        data: { memberCount: { increment: 1 } },
-      })
+      const newMemberCount = team.memberCount + 1
+      const isCapacityReached = newMemberCount === (event.teamMaxSize ?? 4)
 
       if (inviteRecord) {
         await tx.teamInvite.update({
@@ -329,7 +328,23 @@ export async function joinTeamViaCode(input: { eventName: string; teamCode?: str
         })
       }
 
-      return { message: 'Joined successfully.', teamCode: team.teamCode }
+      if (isCapacityReached) {
+        const lockResult = await lockTeam({
+          teamId: team.id,
+          lockedBy: user.id,
+          db: tx,
+        })
+        if (!lockResult.success) {
+          return { error: lockResult.error || "Failed to auto-lock team." }
+        }
+        return { message: 'Team reached capacity and has been locked.', teamCode: team.teamCode }
+      } else {
+        await tx.team.update({
+          where: { id: team.id },
+          data: { memberCount: newMemberCount },
+        })
+        return { message: 'Joined successfully.', teamCode: team.teamCode }
+      }
     })
 
     if (result.error) return { success: false, error: result.error }
@@ -367,10 +382,15 @@ export async function completeTeamRegistration(input: { eventName: string; teamC
 
       if (team.memberCount < (event.teamMinSize ?? 2)) return { error: `Need at least ${event.teamMinSize ?? 2} members.` }
 
-      await tx.team.update({
-        where: { id: team.id },
-        data: { status: TeamStatus.LOCKED, lockedAt: new Date(), lockedBy: user.shacklesId },
+      const lockResult = await lockTeam({
+        teamId: team.id,
+        lockedBy: user.id,
+        db: tx,
       })
+
+      if (!lockResult.success) {
+        return { error: lockResult.error || 'Failed to lock team.' }
+      }
 
       return { message: 'Team locked.', teamCode: team.teamCode }
     })

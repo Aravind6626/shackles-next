@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getActiveYear } from "@/lib/edition";
 import EventCategoryPage from "@/components/features/EventCategoryPage";
@@ -11,33 +12,41 @@ export default async function NonTechnicalEventsPage({
   const activeYear = getActiveYear();
   const resolvedParams = (await searchParams) ?? {};
 
-  const events = await prisma.event.findMany({
-    where: {
-      year: activeYear,
-      type: "NON-TECHNICAL",
-      category: "EVENT",
-      isActive: true,
-      isTemplate: false,
-      isArchived: false,
+  const getNonTechnicalEvents = unstable_cache(
+    async (year: number) => {
+      return prisma.event.findMany({
+        where: {
+          year,
+          type: "NON-TECHNICAL",
+          category: "EVENT",
+          isActive: true,
+          isTemplate: false,
+          isArchived: false,
+        },
+        orderBy: [{ date: "asc" }, { name: "asc" }],
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          rulesUrl: true,
+          date: true,
+          endDate: true,
+          participationMode: true,
+          teamMinSize: true,
+          teamMaxSize: true,
+          trainerName: true,
+          coordinatorName: true,
+          coordinatorPhone: true,
+          contactName: true,
+          contactPhone: true,
+        },
+      });
     },
-    orderBy: [{ date: "asc" }, { name: "asc" }],
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      rulesUrl: true,
-      date: true,
-      endDate: true,
-      participationMode: true,
-      teamMinSize: true,
-      teamMaxSize: true,
-      trainerName: true,
-      coordinatorName: true,
-      coordinatorPhone: true,
-      contactName: true,
-      contactPhone: true,
-    },
-  });
+    ["non-technical-events"],
+    { revalidate: 3600, tags: ["events"] }
+  );
+
+  const events = await getNonTechnicalEvents(activeYear);
 
   const serializedEvents = events.map((e) => ({
     ...e,

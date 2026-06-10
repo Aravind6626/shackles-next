@@ -131,7 +131,7 @@ async function main() {
         type: evt.type,
         category: evt.category,
         trainerName: (evt as Record<string, unknown>).trainerName as string | undefined || null,
-        isTemplate: true,
+        isTemplate: false,
         isArchived: false,
         isActive: true, // Make active for easier testing
         templateSourceId: null,
@@ -143,7 +143,7 @@ async function main() {
         category: evt.category,
         trainerName: (evt as Record<string, unknown>).trainerName as string | undefined || null,
         date: new Date(),
-        isTemplate: true,
+        isTemplate: false,
         isArchived: false,
         isActive: true,
         templateSourceId: null,

@@ -5,6 +5,8 @@ import { getQrSignedUrl } from "@/lib/storage/signed-urls";
 import Image from "next/image";
 import LiveSyncRefresher from "@/components/common/LiveSyncRefresher";
 import { encodeQrPayload } from "@/server/services/qr.service";
+import PaperSubmissionCard from "@/components/features/PaperSubmissionCard";
+import { getDownloadUrl } from "@/lib/storage-url";
 import { getActiveYear } from "@/lib/edition";
 
 export default async function UserDashboardPage() {
@@ -20,7 +22,17 @@ export default async function UserDashboardPage() {
       payment: true,
       onSpotProfile: true,
       registrations: {
-        include: { event: true },
+        include: {
+          event: true,
+          team: {
+            select: {
+              id: true,
+              status: true,
+              leaderUserId: true,
+              paperSubmission: true,
+            },
+          },
+        },
         orderBy: { event: { name: "asc" } },
       },
     },
@@ -50,6 +62,15 @@ export default async function UserDashboardPage() {
     const eventType = (registration.event.type || "").toUpperCase();
     return !eventName.includes("workshop") && eventType !== "WORKSHOP";
   });
+
+  // Pre-resolve dynamic URLs for Paper Submissions
+  for (const registration of events) {
+    if (registration.team?.paperSubmission) {
+      const ps = registration.team.paperSubmission;
+      ps.abstractUrl = await getDownloadUrl(ps.abstractUrl) as string | null;
+      ps.presentationUrl = await getDownloadUrl(ps.presentationUrl) as string | null;
+    }
+  }
 
   const activeYear = getActiveYear();
   const encodedQr = user.qrToken ? encodeQrPayload({
@@ -126,12 +147,40 @@ export default async function UserDashboardPage() {
             <p className="mt-3 text-sm text-gray-500">No event registrations yet.</p>
           ) : (
             <ul className="mt-4 space-y-3">
-              {events.map((registration) => (
-                <li key={registration.id} className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800">
-                  <div className="font-medium text-gray-900">{registration.event.name}</div>
-                  {registration.teamName && <div className="mt-1 text-xs text-gray-600">Team: {registration.teamName}</div>}
-                </li>
-              ))}
+              {events.map((registration) => {
+                const paperSubmission = registration.team?.paperSubmission;
+                const isLeader = registration.team?.leaderUserId === user.id;
+
+                return (
+                  <li key={registration.id} className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800">
+                    <div className="font-medium text-gray-900">{registration.event.name}</div>
+                    {registration.teamName && <div className="mt-1 text-xs text-gray-600">Team: {registration.teamName}</div>}
+                    
+                    {/* Paper Submission Status Card */}
+                    {paperSubmission && registration.team?.status === 'LOCKED' && (
+                      <PaperSubmissionCard
+                        submission={{
+                          id: paperSubmission.id,
+                          teamId: paperSubmission.teamId,
+                          eventId: paperSubmission.eventId,
+                          abstractUrl: paperSubmission.abstractUrl,
+                          abstractSubmittedAt: paperSubmission.abstractSubmittedAt?.toISOString() || null,
+                          abstractDeadline: paperSubmission.abstractDeadline?.toISOString() || null,
+                          selectionStatus: paperSubmission.selectionStatus,
+                          selectedAt: paperSubmission.selectedAt?.toISOString() || null,
+                          selectionNote: paperSubmission.selectionNote,
+                          presentationUrl: paperSubmission.presentationUrl,
+                          presentationSubmittedAt: paperSubmission.presentationSubmittedAt?.toISOString() || null,
+                          presentationDeadline: paperSubmission.presentationDeadline?.toISOString() || null,
+                        }}
+                        isLeader={isLeader}
+                        teamName={registration.teamName || 'Your Team'}
+                        eventName={registration.event.name}
+                      />
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

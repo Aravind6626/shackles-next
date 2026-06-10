@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getActiveYear } from "@/lib/edition";
 import EventCategoryPage from "@/components/features/EventCategoryPage";
@@ -11,34 +12,42 @@ export default async function SpecialEventsPage({
   const activeYear = getActiveYear();
   const resolvedParams = (await searchParams) ?? {};
 
-  const events = await prisma.event.findMany({
-    where: {
-      year: activeYear,
-      type: "SPECIAL",
-      category: "EVENT",
-      isActive: true,
-      isTemplate: false,
-      isArchived: false,
-      name: { not: "KIT DISTRIBUTION" },
+  const getSpecialEvents = unstable_cache(
+    async (year: number) => {
+      return prisma.event.findMany({
+        where: {
+          year,
+          type: "SPECIAL",
+          category: "EVENT",
+          isActive: true,
+          isTemplate: false,
+          isArchived: false,
+          name: { not: "KIT DISTRIBUTION" },
+        },
+        orderBy: [{ date: "asc" }, { name: "asc" }],
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          rulesUrl: true,
+          date: true,
+          endDate: true,
+          participationMode: true,
+          teamMinSize: true,
+          teamMaxSize: true,
+          trainerName: true,
+          coordinatorName: true,
+          coordinatorPhone: true,
+          contactName: true,
+          contactPhone: true,
+        },
+      });
     },
-    orderBy: [{ date: "asc" }, { name: "asc" }],
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      rulesUrl: true,
-      date: true,
-      endDate: true,
-      participationMode: true,
-      teamMinSize: true,
-      teamMaxSize: true,
-      trainerName: true,
-      coordinatorName: true,
-      coordinatorPhone: true,
-      contactName: true,
-      contactPhone: true,
-    },
-  });
+    ["special-events"],
+    { revalidate: 3600, tags: ["events"] }
+  );
+
+  const events = await getSpecialEvents(activeYear);
 
   const serializedEvents = events.map((e) => ({
     ...e,

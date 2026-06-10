@@ -1,5 +1,7 @@
 import { CountdownOptimized } from "@/components/features/CountdownOptimized";
 
+export const revalidate = 3600; // Cache for 1 hour (ISR)
+
 const aboutCards = [
   {
     title: "Alagappa Chettiar Government College of Engineering and Technology",

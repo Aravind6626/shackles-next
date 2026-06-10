@@ -161,6 +161,7 @@ export async function sendTeamLockedEmail(input: {
   teamName: string;
   eventName: string;
   teamCode: string;
+  teamId: string;
   submissionUrl?: string | null;
   submissionDeadline?: Date | null;
 }): Promise<{ success: boolean; error?: string }> {
@@ -181,7 +182,7 @@ export async function sendTeamLockedEmail(input: {
         <p style="margin:0 0 16px;font-size:14px;color:#333">
           This event requires a document submission. Please ensure you upload your abstract/presentation ${deadlineText}.
         </p>
-        <a href="${escapeHtml(input.submissionUrl)}"
+        <a href="${appUrl}/submit-abstract/${input.teamId}"
            style="display:inline-block;padding:10px 20px;background:#000;color:#fff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600">
           Upload Submission
         </a>
@@ -241,5 +242,89 @@ export async function sendEventRegistrationEmail(input: {
   } catch (err) {
     safeLogError('sendEventRegistrationEmail error', err, { email: input.userEmail });
     return { success: false, error: 'Failed to send registration email' };
+  }
+}
+
+// ─── Abstract Upload Request (Paper Presentation) ────────────────────────────
+
+export async function sendAbstractUploadRequestEmail(input: {
+  memberEmail: string;
+  memberName: string;
+  teamId: string;
+  teamName: string;
+  eventName: string;
+  abstractDeadline?: Date | null;
+  isLeader: boolean;
+}): Promise<{ success: boolean; error?: string }> {
+  const memberName = escapeHtml(input.memberName);
+  const teamName = escapeHtml(input.teamName);
+  const eventName = escapeHtml(input.eventName);
+  const uploadUrl = `${appUrl}/submit-abstract/${input.teamId}`;
+
+  const deadlineText = input.abstractDeadline
+    ? input.abstractDeadline.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+    : undefined;
+
+  const { buildAbstractUploadRequestEmail } = await import('@/server/email/templates/abstract-upload-request');
+  const html = buildAbstractUploadRequestEmail({
+    memberName,
+    teamName,
+    eventName,
+    abstractDeadline: deadlineText,
+    dashboardUrl: uploadUrl,
+    isLeader: input.isLeader,
+  });
+
+  try {
+    return await sendEmailHybrid(input.memberEmail, `Submit Your Abstract: ${input.eventName} — Shackles`, html);
+  } catch (err) {
+    safeLogError('sendAbstractUploadRequestEmail error', err, { email: input.memberEmail });
+    return { success: false, error: 'Failed to send abstract upload request email' };
+  }
+}
+
+// ─── Paper Selection Result ──────────────────────────────────────────────────
+
+export async function sendPaperSelectionResultEmail(input: {
+  memberEmail: string;
+  memberName: string;
+  teamId: string;
+  teamName: string;
+  eventName: string;
+  selectionStatus: 'SELECTED' | 'REJECTED';
+  selectionNote?: string | null;
+  presentationDeadline?: Date | null;
+  isLeader: boolean;
+}): Promise<{ success: boolean; error?: string }> {
+  const memberName = escapeHtml(input.memberName);
+  const teamName = escapeHtml(input.teamName);
+  const eventName = escapeHtml(input.eventName);
+  const dashboardUrl = `${appUrl}/submit-abstract/${input.teamId}`;
+
+  const presentationDeadlineText = input.presentationDeadline
+    ? input.presentationDeadline.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+    : undefined;
+
+  const { buildPaperSelectionResultEmail } = await import('@/server/email/templates/paper-selection-result');
+  const html = buildPaperSelectionResultEmail({
+    memberName,
+    teamName,
+    eventName,
+    selectionStatus: input.selectionStatus,
+    selectionNote: input.selectionNote ? escapeHtml(input.selectionNote) : undefined,
+    presentationDeadline: presentationDeadlineText,
+    dashboardUrl,
+    isLeader: input.isLeader,
+  });
+
+  const subject = input.selectionStatus === 'SELECTED'
+    ? `🎉 Abstract Selected: ${input.eventName} — Shackles`
+    : `Abstract Review Result: ${input.eventName} — Shackles`;
+
+  try {
+    return await sendEmailHybrid(input.memberEmail, subject, html);
+  } catch (err) {
+    safeLogError('sendPaperSelectionResultEmail error', err, { email: input.memberEmail });
+    return { success: false, error: 'Failed to send paper selection result email' };
   }
 }

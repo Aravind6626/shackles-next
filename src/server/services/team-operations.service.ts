@@ -9,6 +9,7 @@
 import {
   EventParticipationMode,
   PrismaClient,
+  Prisma,
   TeamMemberRole,
   TeamStatus,
   RegistrationSource,
@@ -26,10 +27,11 @@ import {
 import {
   sendTeamCreatedEmail,
   sendTeamLockedEmail,
+  sendAbstractUploadRequestEmail,
 } from "@/server/services/email.service";
 import { generateUniqueTeamCode, normalizeTeamName } from "@/server/services/team-registration.service";
 
-type DbClient = PrismaClient;
+type DbClient = Prisma.TransactionClient | PrismaClient;
 
 export interface CreateTeamInput {
   userId: string;
@@ -144,8 +146,15 @@ export async function createTeamForEvent(input: CreateTeamInput): Promise<Create
     const joinCode = generateJoinCode();
     const normalizedName = normalizeTeamName(input.teamName);
 
+    const runInTransaction = async <T>(cb: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> => {
+      if ("$transaction" in input.db) {
+        return (input.db as PrismaClient).$transaction(cb);
+      }
+      return cb(input.db as Prisma.TransactionClient);
+    };
+
     // 7. Create team and register leader in a transaction
-    const result = await input.db.$transaction(async (tx) => {
+    const result = await runInTransaction(async (tx) => {
       // Check for duplicate team name
       const existingTeam = await tx.team.findUnique({
         where: {
@@ -352,8 +361,15 @@ export async function joinTeamByCode(input: JoinTeamInput): Promise<JoinTeamResu
       );
     }
 
+    const runInTransaction = async <T>(cb: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> => {
+      if ("$transaction" in input.db) {
+        return (input.db as PrismaClient).$transaction(cb);
+      }
+      return cb(input.db as Prisma.TransactionClient);
+    };
+
     // 9. Add member to team
-    await input.db.$transaction(async (tx) => {
+    await runInTransaction(async (tx) => {
       // Re-check team status (in case it changed)
       const freshTeam = await tx.team.findUnique({
         where: { id: team.id },
@@ -454,6 +470,7 @@ export async function lockTeam(input: LockTeamInput): Promise<LockTeamResult> {
             endDate: true,
             submissionUrl: true,
             submissionDeadline: true,
+            requiresDocumentSubmission: true,
           },
         },
         members: {
@@ -506,6 +523,8 @@ export async function lockTeam(input: LockTeamInput): Promise<LockTeamResult> {
         lockedAt: new Date(),
         lockedBy: input.lockedBy,
         memberCount: team.memberCount, // Ensure it's set correctly
+        joinCode: null,
+        joinCodeExpiresAt: null,
       },
     });
 
@@ -527,7 +546,7 @@ export async function lockTeam(input: LockTeamInput): Promise<LockTeamResult> {
     });
 
     // 5. Send confirmation emails to all members concurrently without failing the lock
-    await Promise.allSettled(
+    Promise.allSettled(
       team.members.map((member) =>
         sendTeamLockedEmail({
           memberEmail: member.user.email,
@@ -535,11 +554,49 @@ export async function lockTeam(input: LockTeamInput): Promise<LockTeamResult> {
           teamName: team.name,
           eventName: team.event.name,
           teamCode: team.teamCode,
+          teamId: input.teamId,
           submissionUrl: team.event.submissionUrl,
           submissionDeadline: team.event.submissionDeadline,
         })
       )
-    );
+    ).catch(err => console.error("Error in background email send:", err));
+
+    // 6. If event requires document submission (Paper Presentation),
+    //    create PaperSubmission record and send abstract upload request emails
+    if (team.event.requiresDocumentSubmission) {
+      try {
+        // Calculate abstract deadline: use event's submissionDeadline if set, otherwise 7 days from now
+        const abstractDeadline = team.event.submissionDeadline
+          ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+        // Create PaperSubmission record
+        await input.db.paperSubmission.create({
+          data: {
+            teamId: team.id,
+            eventId: team.event.id,
+            abstractDeadline,
+          },
+        });
+
+        // Send abstract upload request emails to all members
+        Promise.allSettled(
+          team.members.map((member) =>
+            sendAbstractUploadRequestEmail({
+              memberEmail: member.user.email,
+              memberName: member.user.firstName,
+              teamId: team.id,
+              teamName: team.name,
+              eventName: team.event.name,
+              abstractDeadline,
+              isLeader: member.memberRole === 'LEADER',
+            })
+          )
+        ).catch(err => console.error("Error in background email send:", err));
+      } catch (paperErr) {
+        // Log but don't fail the lock operation
+        console.error('Error creating PaperSubmission or sending abstract emails:', paperErr);
+      }
+    }
 
     return {
       success: true,

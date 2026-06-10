@@ -133,6 +133,7 @@ model Event {
   rulesUrl          String?
   submissionUrl     String?
   submissionDeadline DateTime?
+  requiresDocumentSubmission Boolean @default(false)
   coordinatorName   String?
   coordinatorPhone  String?
   trainerName       String?
@@ -153,10 +154,11 @@ model Event {
   updatedAt         DateTime               @updatedAt
   templateSource    Event?                 @relation("EventTemplateSource", fields: [templateSourceId], references: [id], onDelete: SetNull)
   templateCopies    Event[]                @relation("EventTemplateSource")
-  registrations     EventRegistration[]
-  staffAssignments  EventStaffAssignment[]
-  markingCriteria   MarkingCriteria?
-  teams             Team[]
+  registrations      EventRegistration[]
+  staffAssignments   EventStaffAssignment[]
+  markingCriteria    MarkingCriteria?
+  teams              Team[]
+  paperSubmissions   PaperSubmission[]
 
   @@unique([year, name])
   @@index([year, isArchived, isActive])
@@ -207,6 +209,7 @@ model Team {
   leader                     User?               @relation("TeamLeader", fields: [leaderUserId], references: [id])
   invites                    TeamInvite[]
   teamMarks                  TeamMark[]
+  paperSubmission            PaperSubmission?
 
   @@unique([eventId, nameNormalized])
   @@unique([eventId, teamCode])
@@ -419,6 +422,7 @@ enum Permission {
   ONSPOT_TEAM_REG
   MANAGE_TEAMS
   MANAGE_SCORES
+  MANAGE_SUBMISSIONS
 }
 
 enum StaffRole {
@@ -501,4 +505,41 @@ enum TeamStatus {
 enum TeamMemberRole {
   LEADER
   MEMBER
+}
+
+model PaperSubmission {
+  id                      String               @id @default(cuid())
+  teamId                  String               @unique
+  eventId                 String
+
+  // Phase 1: Abstract (Uploaded file URL)
+  abstractUrl             String?
+  abstractSubmittedAt     DateTime?
+  abstractDeadline        DateTime?
+
+  // Phase 2: Selection
+  selectionStatus         PaperSelectionStatus @default(PENDING)
+  selectedAt              DateTime?
+  selectedBy              String?
+  selectionNote           String?
+
+  // Phase 3: Presentation (Uploaded file URL for selected teams)
+  presentationUrl         String?
+  presentationSubmittedAt DateTime?
+  presentationDeadline    DateTime?
+
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  team                    Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  event                   Event                @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, eventId])
+  @@index([eventId, selectionStatus])
+}
+
+enum PaperSelectionStatus {
+  PENDING
+  SELECTED
+  REJECTED
 }

@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { prisma } from '@/lib/prisma';
 import { getSession, requireManageRegistrationsAccess } from '@/lib/session';
-import { MemberDeleteForm, TeamDeleteForm } from '@/components/features/admin/EventRegistrationDeleteForms';
+import { MemberDeleteForm, TeamDeleteForm, LockTeamButton } from '@/components/features/admin/EventRegistrationDeleteForms';
 import { ChangeLeaderForm } from '@/components/features/admin/ChangeLeaderForm';
 import { ArrowLeft, Download, Users, CheckCircle2, Trophy } from 'lucide-react';
 
@@ -229,6 +229,9 @@ export default async function EventRegistrationDetailPage({
                                                         fullName: `${reg.user.firstName} ${reg.user.lastName}`,
                                                     }))}
                                                 />
+                                            )}
+                                            {team.status !== 'LOCKED' && (
+                                                <LockTeamButton teamId={team.id} teamName={team.name} eventId={eventId} />
                                             )}
                                             <TeamDeleteForm teamId={team.id} teamName={team.name} eventId={eventId} />
                                         </div>

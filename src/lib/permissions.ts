@@ -12,6 +12,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.ONSPOT_TEAM_REG,
     Permission.MANAGE_TEAMS,
     Permission.MANAGE_SCORES,
+    Permission.MANAGE_SUBMISSIONS,
   ],
   [Role.COORDINATOR]: [
     Permission.SCAN_ATTENDANCE,
@@ -20,6 +21,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.ONSPOT_TEAM_REG,
     Permission.MANAGE_TEAMS,
     Permission.MANAGE_SCORES,
+    Permission.MANAGE_SUBMISSIONS,
   ],
   [Role.VOLUNTEER]: [
     Permission.SCAN_ATTENDANCE,

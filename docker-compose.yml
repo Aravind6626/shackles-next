@@ -10,8 +10,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-shackles_symposium}
     # In production, do NOT expose this port externally — only pgbouncer should
     # be reachable by the app. Uncomment below for local debugging only.
-    # ports:
-    #   - "5433:5432"
+    ports:
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -88,8 +88,8 @@ services:
         --maxmemory 128mb
         --maxmemory-policy allkeys-lru
     # Do NOT expose in production — only accessible within Docker network
-    # ports:
-    #   - "6379:6379"
+    ports:
+      - "6379:6379"
     volumes:
       - valkey_data:/data
     healthcheck:

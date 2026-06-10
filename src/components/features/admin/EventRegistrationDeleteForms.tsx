@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from "react";
-import { deleteTeam, deleteTeamMember } from "@/server/actions/event-logistics";
+import { deleteTeam, deleteTeamMember, lockTeamByAdmin } from "@/server/actions/event-logistics";
 
 type TeamDeleteFormProps = {
   teamId: string;
@@ -72,6 +72,42 @@ export function MemberDeleteForm({ registrationId, fullName, hasTeam, eventId }:
       className="relative z-10 rounded-sm border border-red-300 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 cursor-pointer"
     >
       {isPending ? "Deleting..." : (hasTeam ? "Delete Member" : "Delete Participant")}
+    </button>
+  );
+}
+
+type LockTeamButtonProps = {
+  teamId: string;
+  teamName: string;
+  eventId: string;
+};
+
+export function LockTeamButton({ teamId, teamName, eventId }: LockTeamButtonProps) {
+  const [isPending, startTransition] = useTransition();
+
+  const handleLock = () => {
+    const ok = window.confirm(`Lock team "${teamName}"? This will prevent new members from joining and trigger email notifications to the team.`);
+    if (!ok) return;
+
+    startTransition(async () => {
+      const result = await lockTeamByAdmin({ teamId, eventId });
+      if (result.success) {
+        window.location.reload();
+      } else {
+        alert(result.error || "Failed to lock team");
+      }
+    });
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleLock}
+      disabled={isPending}
+      style={{ pointerEvents: 'auto' }}
+      className="relative z-10 rounded-sm border border-emerald-300 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 cursor-pointer"
+    >
+      {isPending ? "Locking..." : "Lock Team"}
     </button>
   );
 }
